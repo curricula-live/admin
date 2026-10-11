@@ -1,0 +1,79 @@
+name: Full-stack owner authentication (disposable CI)
+
+on:
+  pull_request:
+    branches: [dev, main]
+
+permissions:
+  contents: read
+
+jobs:
+  fullstack-owner-auth:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: atlas_e2e
+          POSTGRES_PASSWORD: fake-isolated-test-password
+          POSTGRES_DB: atlas_auth_e2e
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U atlas_e2e -d atlas_auth_e2e"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://atlas_e2e:fake-isolated-test-password@localhost:5432/atlas_auth_e2e
+      DJANGO_SECRET_KEY: isolated-local-only-authorization-fixture-never-production
+      APP_ENV: staging
+      API_REPO_DIR: api-integration
+      DATA_REPO_DIR: data-integration
+    steps:
+      - name: Checkout admin under test
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Checkout fixed Django API integration
+        uses: actions/checkout@v4
+        with:
+          repository: curricula-live/api
+          ref: b9aad941b0643bbc178404f5bf2796d850a3c93a
+          path: api-integration
+          persist-credentials: false
+      - name: Checkout fixed canonical data schema
+        uses: actions/checkout@v4
+        with:
+          repository: curricula-live/data
+          ref: 1aa46b7602bedffd36cc27457d7fa91dd289b54d
+          path: data-integration
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - name: Install pinned API dependencies
+        working-directory: api-integration
+        run: uv sync --frozen --dev
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Install pinned admin dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Install operational SQL in disposable PostgreSQL
+        run: |
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f data-integration/database/migrations/0002_admin_owner.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f data-integration/database/migrations/0003_owner_mail_outbox.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "insert into admin.owner_principal (id,email,role,active) values ('c74fe051-ac5e-521b-8770-3180fb0decb6', 'owner-e2e@example.invalid','owner',true)"
+      - name: Verify Django's configured system checks
+        working-directory: api-integration
+        run: uv run python manage.py check
+      - name: Run real end-to-end login with disposable data, no external mail
+        run: node tests/owner-auth-real-stack.e2e.mjs
