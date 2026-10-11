@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   authBackendEndpoint, configuredAdminOrigin, isValidChallenge,
-  parseIssuedSession, validBrowserPost
+  parseIssuedSession, secureOwnerCookieOptions, validBrowserPost
 } from "../lib/server/owner-auth-bff-contract.ts";
 
 const ADMIN = "https://admin.curricula.live";
@@ -72,4 +72,14 @@ test("magic-link challenge is syntactically constrained before proxying", () => 
   assert.equal(isValidChallenge("short"), false);
   assert.equal(isValidChallenge("a".repeat(43) + "?redirect=/evil"), false);
   assert.equal(isValidChallenge(null), false);
+});
+
+test("owner cookie is always Secure, HttpOnly, host-only and path scoped", () => {
+  const options = secureOwnerCookieOptions(new Date(NOW.getTime() + 60_000));
+  assert.equal(options.httpOnly, true);
+  assert.equal(options.secure, true);
+  assert.equal(options.sameSite, "lax");
+  assert.equal(options.path, "/");
+  assert.equal(Object.prototype.hasOwnProperty.call(options, "domain"), false);
+  assert.equal(options.expires.getTime(), NOW.getTime() + 60_000);
 });
