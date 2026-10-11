@@ -1,6 +1,12 @@
+import OwnerLoginForm from "./owner-login-form";
+import { ownerAuthStageEnabled } from "@/lib/server/owner-auth-bff-contract";
+
 export const dynamic = "force-dynamic";
 
-export default function LoginUnavailable() {
+export default function Login() {
+  if (ownerAuthStageEnabled(process.env.APP_ENV, process.env.ADMIN_OWNER_LOGIN_ENABLED)) {
+    return <OwnerLoginForm />;
+  }
   return (
     <main className="page">
       <section className="panel" aria-labelledby="page-title">

@@ -15,3 +15,10 @@ h1 { font-size: clamp(1.75rem, 4vw, 2.25rem); line-height: 1.18; margin: 1.1rem 
 p { line-height: 1.65; }
 .secondary { color: #616a72; font-size: .9rem; }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; animation: none !important; } }
+
+.auth-form { display: grid; gap: .75rem; margin-block: 1.5rem; }
+.auth-form label { font-size: .9rem; font-weight: 650; }
+.auth-form input { width: 100%; padding: .8rem 1rem; border: 1px solid #8d979f; border-radius: 6px; font: inherit; }
+button { padding: .8rem 1rem; border: 1px solid #1d2327; border-radius: 6px; color: white; background: #1d2327; cursor: pointer; font: inherit; font-weight: 650; margin-block: .5rem; }
+button:disabled { cursor: wait; opacity: .6; }
+button:focus-visible, input:focus-visible { outline: 3px solid #4b5563; outline-offset: 3px; }
