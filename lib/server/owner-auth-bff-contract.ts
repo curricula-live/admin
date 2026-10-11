@@ -1,0 +1,74 @@
+/** Testable security contract for admin-to-Django BFF communications.
+ * Kept separate from Next server runtime so negative cases run in node:test.
+ */
+import { sessionVerificationUrl } from "./session-contract";
+
+const CREDENTIAL = /^[A-Za-z0-9_-]{32,256}$/;
+const OWNER_MAX_SESSION_MS = 8 * 60 * 60 * 1000;
+
+export type IssuedSession = Readonly<{
+  token: string;
+  expiresAt: Date;
+}>;
+
+export function configuredAdminOrigin(raw: string | undefined, production: boolean): string | null {
+  if (!raw) return null;
+  try {
+    const url = new URL(raw);
+    if (url.username || url.password || url.search || url.hash || url.pathname !== "/") return null;
+    const deployed = url.origin === "https://admin.curricula.live";
+    const local = !production && (
+      url.origin === "http://localhost:3000" ||
+      url.origin === "http://127.0.0.1:3000"
+    );
+    return deployed || local ? url.origin : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Origin is required, even if SameSite cookies would otherwise be sent. */
+export function validBrowserPost(
+  origin: string | null,
+  fetchSite: string | null,
+  configured: string | undefined,
+  production: boolean
+): boolean {
+  const expected = configuredAdminOrigin(configured, production);
+  return !!expected && origin === expected && (
+    fetchSite === null || fetchSite === "same-origin"
+  );
+}
+
+export type OwnerAuthOperation = "request" | "redeem" | "logout";
+
+export function authBackendEndpoint(
+  origin: string | undefined,
+  production: boolean,
+  operation: OwnerAuthOperation
+): string | null {
+  const verification = sessionVerificationUrl(origin, production);
+  if (!verification) return null;
+  return new URL(`/v1/admin/auth/${operation}/`, verification).toString();
+}
+
+/** Never accept unexpected upstream credentials or a forged expiry. */
+export function parseIssuedSession(value: unknown, now: Date = new Date()): IssuedSession | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+  const row = value as Record<string, unknown>;
+  if (
+    typeof row.session_token !== "string" ||
+    !CREDENTIAL.test(row.session_token) ||
+    typeof row.expires_at !== "string"
+  ) return null;
+
+  const millis = Date.parse(row.expires_at);
+  if (!Number.isFinite(millis)) return null;
+  const lifetime = millis - now.getTime();
+  if (lifetime <= 0 || lifetime > OWNER_MAX_SESSION_MS + 60_000) return null;
+  return { token: row.session_token, expiresAt: new Date(millis) };
+}
+
+export function isValidChallenge(value: unknown): value is string {
+  return typeof value === "string" && CREDENTIAL.test(value);
+}
