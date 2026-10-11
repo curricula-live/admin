@@ -1,7 +1,7 @@
 /** Testable security contract for admin-to-Django BFF communications.
  * Kept separate from Next server runtime so negative cases run in node:test.
  */
-import { sessionVerificationUrl } from "./session-contract";
+import { sessionVerificationUrl } from "./session-contract.ts";
 
 const CREDENTIAL = /^[A-Za-z0-9_-]{32,256}$/;
 const OWNER_MAX_SESSION_MS = 8 * 60 * 60 * 1000;
