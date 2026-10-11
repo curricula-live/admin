@@ -1,6 +1,5 @@
 /** Server-only bridge. The browser never receives BFF credentials or API sessions. */
 import "server-only";
-import { headers as requestHeaders } from "next/headers";
 import {
   authBackendEndpoint,
   configuredAdminOrigin,
