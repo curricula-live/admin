@@ -1,4 +1,5 @@
 import { notFound, redirect } from "next/navigation";
+import OwnerLogoutButton from "./owner-logout-button";
 import { currentOwnerIdentity } from "@/lib/server/owner-session";
 import { atlasAccessDecision } from "@/lib/server/owner-access-policy";
 
@@ -24,6 +25,7 @@ export default async function AtlasOwnerShell() {
           Academic provenance, release identity and server-authorized graph queries
           must be verified before any knowledge content is displayed.
         </p>
+        <OwnerLogoutButton />
       </section>
     </main>
   );
