@@ -59,3 +59,9 @@ feature flag is not sufficient for working production login.
   origin/CSRF attacks, cookie expiry and revocation across instances,
   accessibility and shared rate limiting. No production database cutover,
   secret provisioning, DNS, merge or deployment is authorized by this PR.
+
+
+### Defense-in-depth added before cookie issuance
+- The login UI and BFF are stage-gated to APP_ENV=staging or APP_ENV=development; APP_ENV=production remains disabled even if a feature flag is accidentally set.
+- A freshly redeemed Django bearer is independently checked against GET /v1/admin/auth/session/ for an active owner before the BFF sets any cookie. Cookie expiry is capped by the earlier authoritative expiry. A rejected session is not installed and revocation is attempted.
+- Large JSON requests are rejected using the length header and a bounded streaming reader.

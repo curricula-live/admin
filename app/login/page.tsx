@@ -1,9 +1,10 @@
 import OwnerLoginForm from "./owner-login-form";
+import { ownerAuthStageEnabled } from "@/lib/server/owner-auth-bff-contract";
 
 export const dynamic = "force-dynamic";
 
 export default function Login() {
-  if (process.env.ADMIN_OWNER_LOGIN_ENABLED === "true") {
+  if (ownerAuthStageEnabled(process.env.APP_ENV, process.env.ADMIN_OWNER_LOGIN_ENABLED)) {
     return <OwnerLoginForm />;
   }
   return (

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { OWNER_COOKIE_NAME } from "@/lib/server/session-contract";
-import { isValidChallenge, parseIssuedSession, secureOwnerCookieOptions } from "@/lib/server/owner-auth-bff-contract";
+import { isValidChallenge, parseIssuedSession, secureOwnerCookieOptions, verifiedOwnerCookieExpiry } from "@/lib/server/owner-auth-bff-contract";
+import { verifyOwnerSession } from "@/lib/server/session-contract";
 import {
   browserRequestAllowed,
   callOwnerBackend,
@@ -56,10 +57,23 @@ export async function POST(request: Request) {
     });
   }
 
+  const attested = await verifyOwnerSession(
+    session.token, process.env.CURRICULA_API_ORIGIN,
+    process.env.NODE_ENV === "production", fetch
+  );
+  const attestedExpiry = verifiedOwnerCookieExpiry(session, attested);
+  if (!attestedExpiry) {
+    // Never install an unverified credential. Best-effort revoke the orphan session.
+    await callOwnerBackend("logout", undefined, session.token);
+    return NextResponse.json({ error: "temporarily unavailable" }, {
+      status: 503, headers: noStoreHeaders(),
+    });
+  }
+
   // The API's bearer token is NEVER serialized in this browser response.
   const response = NextResponse.json({ authenticated: true }, {
     status: 200, headers: noStoreHeaders(),
   });
-  response.cookies.set(OWNER_COOKIE_NAME, session.token, secureOwnerCookieOptions(session.expiresAt));
+  response.cookies.set(OWNER_COOKIE_NAME, session.token, secureOwnerCookieOptions(attestedExpiry));
   return response;
 }

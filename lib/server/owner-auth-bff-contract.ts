@@ -1,7 +1,7 @@
 /** Testable security contract for admin-to-Django BFF communications.
  * Kept separate from Next server runtime so negative cases run in node:test.
  */
-import { sessionVerificationUrl } from "./session-contract.ts";
+import { sessionVerificationUrl, type OwnerIdentity } from "./session-contract.ts";
 
 const CREDENTIAL = /^[A-Za-z0-9_-]{32,256}$/;
 const OWNER_MAX_SESSION_MS = 8 * 60 * 60 * 1000;
@@ -38,6 +38,11 @@ export function validBrowserPost(
   return !!expected && origin === expected && (
     fetchSite === null || fetchSite === "same-origin"
   );
+}
+
+/** An env flag alone cannot enable owner auth on production hosts. */
+export function ownerAuthStageEnabled(stage: string | undefined, enabled: string | undefined): boolean {
+  return enabled === "true" && (stage === "staging" || stage === "development");
 }
 
 export type OwnerAuthOperation = "request" | "redeem" | "logout";
@@ -82,4 +87,17 @@ export function secureOwnerCookieOptions(expiresAt: Date) {
     expires: expiresAt,
     // No Domain property; __Host- cookies must be host-only.
   };
+}
+
+
+/** Bound browser-cookie lifetime to a freshly attested, active Django owner. */
+export function verifiedOwnerCookieExpiry(
+  issued: IssuedSession, owner: OwnerIdentity | null, now: Date = new Date()
+): Date | null {
+  if (!owner || owner.role !== "owner") return null;
+  const authoritative = Date.parse(owner.expiresAt);
+  if (!Number.isFinite(authoritative)) return null;
+  const expiry = Math.min(issued.expiresAt.getTime(), authoritative);
+  if (expiry <= now.getTime() || expiry > now.getTime() + OWNER_MAX_SESSION_MS + 60_000) return null;
+  return new Date(expiry);
 }

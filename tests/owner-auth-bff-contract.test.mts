@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   authBackendEndpoint, configuredAdminOrigin, isValidChallenge,
-  parseIssuedSession, secureOwnerCookieOptions, validBrowserPost
+  parseIssuedSession, secureOwnerCookieOptions, validBrowserPost,
+  ownerAuthStageEnabled, verifiedOwnerCookieExpiry
 } from "../lib/server/owner-auth-bff-contract.ts";
 
 const ADMIN = "https://admin.curricula.live";
@@ -82,4 +83,28 @@ test("owner cookie is always Secure, HttpOnly, host-only and path scoped", () =>
   assert.equal(options.path, "/");
   assert.equal(Object.prototype.hasOwnProperty.call(options, "domain"), false);
   assert.equal(options.expires.getTime(), NOW.getTime() + 60_000);
+});
+
+
+test("an enabled flag cannot activate passwordless login in production", () => {
+  assert.equal(ownerAuthStageEnabled("production", "true"), false);
+  assert.equal(ownerAuthStageEnabled(undefined, "true"), false);
+  assert.equal(ownerAuthStageEnabled("staging", "true"), true);
+  assert.equal(ownerAuthStageEnabled("development", "true"), true);
+  assert.equal(ownerAuthStageEnabled("staging", undefined), false);
+});
+
+test("a fresh active owner attestation is required before setting the cookie", () => {
+  const issued = parseIssuedSession({
+    session_token: "b".repeat(43),
+    expires_at: new Date(NOW.getTime() + 3600000).toISOString()
+  }, NOW)!;
+  const owner = {
+    subjectId: "c74fe051-ac5e-521b-8770-3180fb0decb6",
+    role: "owner" as const,
+    expiresAt: new Date(NOW.getTime() + 1800000).toISOString()
+  };
+  assert.equal(verifiedOwnerCookieExpiry(issued, null, NOW), null);
+  assert.equal(verifiedOwnerCookieExpiry(issued, owner, NOW)?.toISOString(), owner.expiresAt);
+  assert.equal(verifiedOwnerCookieExpiry(issued, { ...owner, expiresAt: NOW.toISOString() }, NOW), null);
 });

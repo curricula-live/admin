@@ -3,6 +3,7 @@ import "server-only";
 import {
   authBackendEndpoint,
   configuredAdminOrigin,
+  ownerAuthStageEnabled,
   validBrowserPost,
   type OwnerAuthOperation,
 } from "./owner-auth-bff-contract";
@@ -12,7 +13,7 @@ const MAX_REQUEST_BYTES = 2048;
 export function ownerLoginEnabled(): boolean {
   const secret = process.env.OWNER_BFF_SHARED_SECRET;
   const production = process.env.NODE_ENV === "production";
-  return process.env.ADMIN_OWNER_LOGIN_ENABLED === "true" &&
+  return ownerAuthStageEnabled(process.env.APP_ENV, process.env.ADMIN_OWNER_LOGIN_ENABLED) &&
     typeof secret === "string" && secret.length >= 32 &&
     configuredAdminOrigin(process.env.ADMIN_PUBLIC_ORIGIN, production) !== null &&
     authBackendEndpoint(process.env.CURRICULA_API_ORIGIN, production, "request") !== null;
@@ -30,6 +31,9 @@ export function browserRequestAllowed(request: Request): boolean {
 export async function readLimitedJson(request: Request): Promise<Record<string, unknown> | null> {
   if (request.headers.get("content-type")?.split(";")[0].trim() !== "application/json") return null;
   if (!request.body) return null;
+  const reportedLength = request.headers.get("content-length");
+  if (reportedLength !== null && (!/^\d+$/.test(reportedLength) ||
+      Number(reportedLength) > MAX_REQUEST_BYTES)) return null;
   const reader = request.body.getReader();
   const pieces: Uint8Array[] = [];
   let length = 0;
@@ -38,7 +42,7 @@ export async function readLimitedJson(request: Request): Promise<Record<string, 
       const { done, value } = await reader.read();
       if (done) break;
       length += value.byteLength;
-      if (length > MAX_REQUEST_BYTES) return null;
+      if (length > MAX_REQUEST_BYTES) { await reader.cancel(); return null; }
       pieces.push(value);
     }
     if (length === 0) return null;
