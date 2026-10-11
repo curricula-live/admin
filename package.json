@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test:contracts": "node --experimental-strip-types --test tests/*.test.mts"
+    "test:contracts": "node --experimental-strip-types --test tests/*.test.mts",
+    "test:auth-http": "node tests/owner-auth-http.e2e.mjs"
   },
   "dependencies": {
     "next": "16.4.0",
