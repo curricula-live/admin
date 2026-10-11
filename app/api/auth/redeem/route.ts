@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { OWNER_COOKIE_NAME } from "@/lib/server/session-contract";
-import { isValidChallenge, parseIssuedSession } from "@/lib/server/owner-auth-bff-contract";
+import { isValidChallenge, parseIssuedSession, secureOwnerCookieOptions } from "@/lib/server/owner-auth-bff-contract";
 import {
   browserRequestAllowed,
   callOwnerBackend,
@@ -60,13 +60,6 @@ export async function POST(request: Request) {
   const response = NextResponse.json({ authenticated: true }, {
     status: 200, headers: noStoreHeaders(),
   });
-  response.cookies.set(OWNER_COOKIE_NAME, session.token, {
-    httpOnly: true,
-    secure: true,
-    sameSite: "lax",
-    path: "/",
-    expires: session.expiresAt,
-    // Deliberately no Domain: required for __Host- cookies.
-  });
+  response.cookies.set(OWNER_COOKIE_NAME, session.token, secureOwnerCookieOptions(session.expiresAt));
   return response;
 }
