@@ -26,6 +26,8 @@ jobs:
         run: npm run lint
       - name: Typecheck
         run: npm run typecheck
+      - name: Session contract tests
+        run: npm run test:contracts
       - name: Build
         run: npm run build
       - name: Production dependency audit
