@@ -1,6 +1,11 @@
+import OwnerLoginForm from "./owner-login-form";
+
 export const dynamic = "force-dynamic";
 
-export default function LoginUnavailable() {
+export default function Login() {
+  if (process.env.ADMIN_OWNER_LOGIN_ENABLED === "true") {
+    return <OwnerLoginForm />;
+  }
   return (
     <main className="page">
       <section className="panel" aria-labelledby="page-title">
