@@ -1,3 +1,4 @@
+import "server-only";
 /** Server Component and BFF helper; do not import from client code. */
 import { cookies } from "next/headers";
 import { OWNER_COOKIE_NAME, verifyOwnerSession } from "./session-contract";
