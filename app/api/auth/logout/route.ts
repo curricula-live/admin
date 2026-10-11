@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { OWNER_COOKIE_NAME } from "@/lib/server/session-contract";
+import { secureOwnerCookieOptions } from "@/lib/server/owner-auth-bff-contract";
 import {
   browserRequestAllowed,
   callOwnerBackend,
@@ -28,12 +29,6 @@ export async function POST(request: NextRequest) {
         status: 503, headers: noStoreHeaders(),
       });
 
-  response.cookies.set(OWNER_COOKIE_NAME, "", {
-    httpOnly: true,
-    secure: true,
-    sameSite: "lax",
-    path: "/",
-    expires: new Date(0),
-  });
+  response.cookies.set(OWNER_COOKIE_NAME, "", secureOwnerCookieOptions(new Date(0)));
   return response;
 }
