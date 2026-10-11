@@ -72,3 +72,14 @@ export function parseIssuedSession(value: unknown, now: Date = new Date()): Issu
 export function isValidChallenge(value: unknown): value is string {
   return typeof value === "string" && CREDENTIAL.test(value);
 }
+
+export function secureOwnerCookieOptions(expiresAt: Date) {
+  return {
+    httpOnly: true as const,
+    secure: true as const,
+    sameSite: "lax" as const,
+    path: "/" as const,
+    expires: expiresAt,
+    // No Domain property; __Host- cookies must be host-only.
+  };
+}
