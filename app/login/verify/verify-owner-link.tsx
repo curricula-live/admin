@@ -9,17 +9,23 @@ export default function VerifyOwnerLink() {
   const [status, setStatus] = useState<Status>("loading");
 
   useEffect(() => {
-    // The token is in the fragment, never in HTTP request URLs or SSR logs.
-    const params = new URLSearchParams(window.location.hash.slice(1));
-    const token = params.get("challenge");
-    // Remove it promptly from browser history and address bar.
-    window.history.replaceState(null, "", window.location.pathname);
-    if (token && /^[A-Za-z0-9_-]{32,256}$/.test(token)) {
-      setChallenge(token);
-      setStatus("ready");
-    } else {
-      setStatus("missing");
-    }
+    let cancelled = false;
+    // Defer state initialization until after the effect; StrictMode cleanup
+    // prevents a stale callback from racing the next effect instance.
+    queueMicrotask(() => {
+      if (cancelled) return;
+      const params = new URLSearchParams(window.location.hash.slice(1));
+      const token = params.get("challenge");
+      // A fragment never reaches the server; promptly erase it from history.
+      window.history.replaceState(null, "", window.location.pathname);
+      if (token && /^[A-Za-z0-9_-]{32,256}$/.test(token)) {
+        setChallenge(token);
+        setStatus("ready");
+      } else {
+        setStatus("missing");
+      }
+    });
+    return () => { cancelled = true; };
   }, []);
 
   async function confirm() {
