@@ -13,7 +13,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        transport: [http, https]
+        include:
+          - transport: http
+            mail: file
+          - transport: https
+            mail: file
+          - transport: https
+            mail: smtp
     timeout-minutes: 20
     services:
       postgres:
@@ -99,4 +105,5 @@ jobs:
       - name: Run real browser login over isolated transport
         env:
           OWNER_E2E_TRANSPORT: ${{ matrix.transport }}
+          OWNER_E2E_MAIL_TRANSPORT: ${{ matrix.mail }}
         run: node tests/owner-auth-real-stack.e2e.mjs
