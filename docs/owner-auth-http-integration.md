@@ -43,7 +43,7 @@ PostgreSQL 16 service and checks out the **exact reviewed integration commits**
 for all three repositories:
 
 - Admin: the pull request's current branch
-- Django API: `b9aad941b0643bbc178404f5bf2796d850a3c93a`
+- Django API: `f0bf25b242761a8f7a548955cb1ed1d4dead4176`
   ([api PR #55](https://github.com/curricula-live/api/pull/55)), which
   explicitly handles trusted machine POSTs without Django browser CSRF tokens
 - Data: `1aa46b7602bedffd36cc27457d7fa91dd289b54d`
