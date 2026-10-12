@@ -28,6 +28,8 @@ jobs:
         run: npm run typecheck
       - name: Session contract tests
         run: npm run test:contracts
+      - name: Owner HTTP integration (Next.js against loopback Django stub)
+        run: npm run test:auth-http
       - name: Build
         run: npm run build
       - name: Production dependency audit
