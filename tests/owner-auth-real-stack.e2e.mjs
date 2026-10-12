@@ -183,8 +183,25 @@ async function scenario() {
       ignoreHTTPSErrors: TLS,
     });
     page = await context.newPage();
+    const failures = [];
+    page.on("requestfailed", request => {
+      const target = new URL(request.url());
+      failures.push(`request: ${target.origin}${target.pathname} -> ${request.failure()?.errorText || "unknown"}`);
+    });
+    page.on("pageerror", error => failures.push(`page: ${error.name}: ${error.message.slice(0, 160)}`));
     await page.goto(ADMIN + "/login/verify#challenge=" + challenge);
-    await page.getByRole("button", { name: "Confirm sign-in" }).waitFor();
+    try {
+      await page.getByRole("button", { name: "Confirm sign-in" }).waitFor({ timeout: 12000 });
+    } catch (error) {
+      const state = await page.getByRole("status").allTextContents();
+      const alerts = await page.getByRole("alert").allTextContents();
+      const scripts = await page.locator("script[src]").evaluateAll(
+        nodes => [...new Set(nodes.map(node => new URL(node.src).origin))]
+      );
+      throw Error("Verification page failed to hydrate (no challenge values logged): " +
+        JSON.stringify({ state, alerts, scriptOrigins: scripts, failures: failures.slice(0, 12) }) +
+        " / " + error.name);
+    }
     assert.equal(new URL(page.url()).hash, "", "Token fragment must be erased after page load");
     assert.equal(db("select count(*) from admin.owner_session"), "0",
       "Loading the email link must not create a session");
