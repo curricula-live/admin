@@ -67,6 +67,10 @@ jobs:
           cache-dependency-path: package-lock.json
       - name: Install pinned admin dependencies
         run: npm ci --no-audit --no-fund
+      - name: Install isolated Chromium test dependency
+        run: |
+          npm install --no-save --package-lock=false --ignore-scripts playwright@1.56.1
+          npx playwright install --with-deps chromium
       - name: Install operational SQL in disposable PostgreSQL
         run: |
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f data-integration/database/migrations/0002_admin_owner.sql
