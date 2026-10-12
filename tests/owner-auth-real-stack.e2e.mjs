@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 
-const ADMIN = "http://127.0.0.1:3000";
+const ADMIN = "http://localhost:3000";
 const API = "http://127.0.0.1:8000";
 const OWNER_EMAIL = "owner-e2e@example.invalid";
 const COOKIE_NAME = "__Host-curricula_admin_session";
@@ -135,47 +135,76 @@ async function scenario() {
   assert.equal(notValid.status, 401);
   assert.equal(notValid.headers.has("set-cookie"), false);
 
-  const redeemed = await call("/api/auth/redeem", "POST", { challenge }, origin);
-  assert.equal(redeemed.status, 200);
-  assertSafeHeaders(redeemed);
-  assert.deepEqual(await redeemed.json(), { authenticated: true });
-  const header = redeemed.headers.get("set-cookie") || "";
-  assert.match(header, /^__Host-curricula_admin_session=[A-Za-z0-9_-]+;/);
-  assert.match(header, /;\s*Secure/i);
-  assert.match(header, /;\s*HttpOnly/i);
-  assert.match(header, /;\s*SameSite=Lax/i);
-  assert.match(header, /;\s*Path=\//i);
-  assert.doesNotMatch(header, /;\s*Domain=/i);
-  const session = header.split("=")[1].split(";")[0];
-  assert.notEqual(session, challenge);
-  assert.equal(db("select count(*) from admin.owner_session"), "1");
-  assert.equal(db("select count(*) from admin.email_challenge where consumed_at is not null"), "1");
+  // The browser test verifies actual DOM interaction and cookie persistence;
+  // HTTP-only contract checks remain in tests/owner-auth-http.e2e.mjs.
+  const { chromium } = await import("playwright");
+  const browser = await chromium.launch({ headless: true });
+  let context;
+  let page;
+  let session;
+  try {
+    context = await browser.newContext();
+    page = await context.newPage();
+    await page.goto(ADMIN + "/login/verify#challenge=" + challenge);
+    await page.getByRole("button", { name: "Confirm sign-in" }).waitFor();
+    assert.equal(new URL(page.url()).hash, "", "Token fragment must be erased after page load");
+    assert.equal(db("select count(*) from admin.owner_session"), "0",
+      "Loading the email link must not create a session");
+    const redeemEvent = page.waitForResponse(r => r.url().endsWith("/api/auth/redeem") && r.request().method() === "POST");
+    await page.getByRole("button", { name: "Confirm sign-in" }).click();
+    const redeemResponse = await redeemEvent;
+    assert.equal(redeemResponse.status(), 200, "Real browser POST must redeem the challenge");
+    assert.deepEqual(await redeemResponse.json(), { authenticated: true });
+    await page.waitForURL("**/atlas");
+    await page.getByRole("heading", { name: "Knowledge Atlas" }).waitFor();
+    const cookies = await context.cookies();
+    const ownerCookies = cookies.filter(c => c.name === COOKIE_NAME);
+    assert.equal(ownerCookies.length, 1,
+      "Chromium must persist exactly one secure host-only owner cookie");
+    const stored = ownerCookies[0];
+    assert.equal(stored.httpOnly, true);
+    assert.equal(stored.secure, true);
+    assert.equal(stored.sameSite, "Lax");
+    assert.equal(stored.path, "/");
+    assert.ok(stored.expires * 1000 > Date.now());
+    session = stored.value;
+    assert.notEqual(session, challenge);
+    assert.ok(/^[A-Za-z0-9_-]{32,256}$/.test(session));
+    assert.equal(db("select count(*) from admin.owner_session"), "1");
+    assert.equal(db("select count(*) from admin.email_challenge where consumed_at is not null"), "1");
 
-  const replay = await call("/api/auth/redeem", "POST", { challenge }, origin);
-  assert.equal(replay.status, 401);
-  assert.equal(replay.headers.has("set-cookie"), false);
+    const replay = await call("/api/auth/redeem", "POST", { challenge }, origin);
+    assert.equal(replay.status, 401);
+    assert.equal(replay.headers.has("set-cookie"), false);
 
-  const cookie = { Cookie: COOKIE_NAME + "=" + session };
-  const allowed = await call("/atlas", "GET", undefined, cookie);
-  assert.equal(allowed.status, 200);
-  assert.match(await allowed.text(), /Knowledge Atlas/);
+    const cookie = { Cookie: COOKIE_NAME + "=" + session };
+    const allowed = await call("/atlas", "GET", undefined, cookie);
+    assert.equal(allowed.status, 200);
+    assert.match(await allowed.text(), /Knowledge Atlas/);
 
-  db("update admin.owner_principal set active=false,disabled_at=now() where email='owner-e2e@example.invalid'");
-  const inactive = await call("/atlas", "GET", undefined, cookie);
-  assert.ok(redirectedToLogin(inactive), "Persisted owner deactivation must revoke authorization");
-  db("update admin.owner_principal set active=true,disabled_at=null where email='owner-e2e@example.invalid'");
+    db("update admin.owner_principal set active=false,disabled_at=now() where email='owner-e2e@example.invalid'");
+    const inactive = await call("/atlas", "GET", undefined, cookie);
+    assert.ok(redirectedToLogin(inactive), "Persisted owner deactivation must revoke authorization");
+    db("update admin.owner_principal set active=true,disabled_at=null where email='owner-e2e@example.invalid'");
 
-  const logout = await call("/api/auth/logout", "POST", undefined, { ...origin, ...cookie });
-  assert.equal(logout.status, 204);
-  const cleared = logout.headers.get("set-cookie") || "";
-  assert.match(cleared, /^__Host-curricula_admin_session=/);
-  assert.match(cleared, /;\s*Secure/i);
-  assert.match(cleared, /;\s*HttpOnly/i);
-  assert.match(cleared, /(?:Expires=Thu, 01 Jan 1970|Max-Age=0)/i);
-  assert.equal(db("select count(*) from admin.owner_session where revoked_at is not null"), "1");
-  const denied = await call("/atlas", "GET", undefined, cookie);
-  assert.ok(redirectedToLogin(denied), "Revoked database session must not authorize Atlas");
-  console.log("PASS: real Next.js -> Django -> PostgreSQL -> mail worker -> cookie -> logout");
+    const logoutEvent = page.waitForResponse(r => r.url().endsWith("/api/auth/logout") && r.request().method() === "POST");
+    await page.getByRole("button", { name: "Sign out" }).click();
+    const logoutResponse = await logoutEvent;
+    assert.equal(logoutResponse.status(), 204);
+    await page.waitForURL("**/login");
+    assert.equal((await context.cookies()).filter(c => c.name === COOKIE_NAME).length, 0,
+      "Logout must erase the browser's session cookie");
+    assert.equal(db("select count(*) from admin.owner_session where revoked_at is not null"), "1");
+    const denied = await call("/atlas", "GET", undefined, cookie);
+    assert.ok(redirectedToLogin(denied), "Revoked session must not authorize Atlas");
+    await page.goto(ADMIN + "/atlas");
+    await page.waitForURL("**/login");
+  } finally {
+    await context?.close();
+    await browser.close();
+  }
+  console.log("PASS: real browser -> Next.js -> Django -> PostgreSQL -> email worker");
+
 }
 try {
   if (!env.DATABASE_URL || !env.DJANGO_SECRET_KEY) die("Disposable CI database variables required");
