@@ -9,6 +9,7 @@ import assert from "node:assert/strict";
 import { spawn, execFileSync } from "node:child_process";
 import { createServer as createHttpsServer } from "node:https";
 import { request as httpRequest } from "node:http";
+import { connect as tcpConnect } from "node:net";
 import { readFileSync } from "node:fs";
 import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -80,6 +81,25 @@ async function startTlsProxy() {
       response.end();
     });
     request.pipe(upstream);
+  });
+  // Next dev's Turbopack/HMR client uses WebSocket upgrades. Tunnel those
+  // only to the local Next test server so the page can hydrate over HTTPS.
+  tlsProxy.on("upgrade", (request, client, head) => {
+    const upstream = tcpConnect(3000, "127.0.0.1");
+    upstream.once("connect", () => {
+      const lines = [`${request.method} ${request.url} HTTP/1.1`];
+      for (let i = 0; i < request.rawHeaders.length; i += 2) {
+        const key = request.rawHeaders[i];
+        const value = /^host$/i.test(key) ? "localhost:3000" : request.rawHeaders[i + 1];
+        lines.push(`${key}: ${value}`);
+      }
+      upstream.write(lines.join("\r\n") + "\r\n\r\n");
+      if (head.length) upstream.write(head);
+      client.pipe(upstream);
+      upstream.pipe(client);
+    });
+    upstream.on("error", () => client.destroy());
+    client.on("error", () => upstream.destroy());
   });
   await new Promise((resolveReady, rejectReady) => {
     tlsProxy.once("error", rejectReady);
