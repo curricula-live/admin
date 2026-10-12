@@ -108,3 +108,21 @@ test("a fresh active owner attestation is required before setting the cookie", (
   assert.equal(verifiedOwnerCookieExpiry(issued, owner, NOW)?.toISOString(), owner.expiresAt);
   assert.equal(verifiedOwnerCookieExpiry(issued, { ...owner, expiresAt: NOW.toISOString() }, NOW), null);
 });
+
+
+test("HTTPS localhost fixture is strictly isolated to staging and is never production", () => {
+  const tlsFixture = "https://localhost:3443";
+  assert.equal(configuredAdminOrigin(tlsFixture, false, "staging"), tlsFixture);
+  assert.equal(configuredAdminOrigin(tlsFixture, false, "development"), null);
+  assert.equal(configuredAdminOrigin(tlsFixture, true, "staging"), null);
+  assert.equal(validBrowserPost(tlsFixture, "same-origin", tlsFixture, false, "staging"), true);
+  assert.equal(validBrowserPost("http://localhost:3000", "same-origin", tlsFixture, false, "staging"), false);
+  assert.equal(validBrowserPost(tlsFixture, "cross-site", tlsFixture, false, "staging"), false);
+  for (const bad of [
+    "https://localhost:3444",
+    "https://127.0.0.1:3443",
+    "https://localhost.evil.example:3443",
+    "https://localhost:3443/?next=evil",
+    "https://admin.curricula.live.evil.example"
+  ]) assert.equal(configuredAdminOrigin(bad, false, "staging"), null);
+});
