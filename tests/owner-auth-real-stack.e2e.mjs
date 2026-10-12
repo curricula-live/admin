@@ -7,12 +7,16 @@
  */
 import assert from "node:assert/strict";
 import { spawn, execFileSync } from "node:child_process";
+import { createServer as createHttpsServer } from "node:https";
+import { request as httpRequest } from "node:http";
+import { readFileSync } from "node:fs";
 import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 
-const ADMIN = "http://localhost:3000";
+const TLS = process.env.OWNER_E2E_TRANSPORT === "https";
+const ADMIN = TLS ? "https://localhost:3443" : "http://localhost:3000";
 const API = "http://127.0.0.1:8000";
 const OWNER_EMAIL = "owner-e2e@example.invalid";
 const COOKIE_NAME = "__Host-curricula_admin_session";
@@ -23,6 +27,7 @@ const hmacSecret = "disposable-fullstack-challenge-HMAC-fixture-2026";
 const rateSecret = "disposable-fullstack-hashed-quota-fixture-2026";
 let djangoProcess;
 let nextProcess;
+let tlsProxy;
 let spool;
 let logs = "";
 const env = { ...process.env };
@@ -52,6 +57,36 @@ function start(command, args, cwd, stage) {
   }
   return proc;
 }
+async function startTlsProxy() {
+  const cert = process.env.OWNER_E2E_TLS_CERT;
+  const key = process.env.OWNER_E2E_TLS_KEY;
+  if (!cert || !key) die("Temporary TLS certificate and key required for HTTPS fixture");
+  tlsProxy = createHttpsServer({
+    cert: readFileSync(cert),
+    key: readFileSync(key),
+  }, (request, response) => {
+    const upstream = httpRequest({
+      hostname: "127.0.0.1",
+      port: 3000,
+      method: request.method,
+      path: request.url,
+      headers: { ...request.headers, host: "localhost:3000" },
+    }, result => {
+      response.writeHead(result.statusCode || 502, result.headers);
+      result.pipe(response);
+    });
+    upstream.on("error", () => {
+      if (!response.headersSent) response.writeHead(502);
+      response.end();
+    });
+    request.pipe(upstream);
+  });
+  await new Promise((resolveReady, rejectReady) => {
+    tlsProxy.once("error", rejectReady);
+    tlsProxy.listen(3443, "127.0.0.1", resolveReady);
+  });
+}
+
 async function run(command, args, cwd) {
   const proc = start(command, args, cwd, "worker");
   const exitCode = await new Promise((resolveExit, rejectExit) => {
@@ -143,7 +178,10 @@ async function scenario() {
   let page;
   let session;
   try {
-    context = await browser.newContext();
+    context = await browser.newContext({
+      // Disposable self-signed local CA; this does not assess public PKI trust.
+      ignoreHTTPSErrors: TLS,
+    });
     page = await context.newPage();
     await page.goto(ADMIN + "/login/verify#challenge=" + challenge);
     await page.getByRole("button", { name: "Confirm sign-in" }).waitFor();
@@ -207,7 +245,7 @@ async function scenario() {
     await context?.close();
     await browser.close();
   }
-  console.log("PASS: real browser -> Next.js -> Django -> PostgreSQL -> email worker");
+  console.log(`PASS: ${TLS ? "TLS browser" : "HTTP browser"} -> Next.js -> Django -> PostgreSQL -> email worker`);
 
 }
 try {
@@ -244,6 +282,8 @@ try {
   nextProcess = start(process.execPath, [
     resolve("node_modules/next/dist/bin/next"), "dev", "-H", "127.0.0.1", "-p", "3000"
   ], process.cwd(), "next");
+  await waitFor("http://127.0.0.1:3000/login", nextProcess);
+  if (TLS) await startTlsProxy();
   await waitFor(ADMIN + "/login", nextProcess);
   await scenario();
 } catch (error) {
@@ -260,5 +300,6 @@ try {
     ]);
     if (proc.exitCode === null) proc.kill("SIGKILL");
   }
+  if (tlsProxy) await new Promise(resolveClose => tlsProxy.close(resolveClose));
   if (spool) await rm(spool, { recursive: true, force: true });
 }
