@@ -11,7 +11,7 @@ export type IssuedSession = Readonly<{
   expiresAt: Date;
 }>;
 
-export function configuredAdminOrigin(raw: string | undefined, production: boolean): string | null {
+export function configuredAdminOrigin(raw: string | undefined, production: boolean, stage?: string): string | null {
   if (!raw) return null;
   try {
     const url = new URL(raw);
@@ -21,7 +21,11 @@ export function configuredAdminOrigin(raw: string | undefined, production: boole
       url.origin === "http://localhost:3000" ||
       url.origin === "http://127.0.0.1:3000"
     );
-    return deployed || local ? url.origin : null;
+    // Exact TLS fixture for disposable CI. Never allow an arbitrary preview
+    // host or port; NODE_ENV=production and APP_ENV!=staging both deny it.
+    const localTlsStaging = !production && stage === "staging" &&
+      url.origin === "https://localhost:3443";
+    return deployed || local || localTlsStaging ? url.origin : null;
   } catch {
     return null;
   }
@@ -32,9 +36,10 @@ export function validBrowserPost(
   origin: string | null,
   fetchSite: string | null,
   configured: string | undefined,
-  production: boolean
+  production: boolean,
+  stage?: string
 ): boolean {
-  const expected = configuredAdminOrigin(configured, production);
+  const expected = configuredAdminOrigin(configured, production, stage);
   return !!expected && origin === expected && (
     fetchSite === null || fetchSite === "same-origin"
   );
