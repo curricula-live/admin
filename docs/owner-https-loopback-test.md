@@ -44,3 +44,29 @@ scenario preserves the preexisting test coverage.
 Run this only in the isolated CI workflow or with matching disposable
 PostgreSQL and synthetic fixture accounts. A genuinely deployed preview
 still requires team-permitted Vercel access and approved mail delivery.
+
+
+## SMTP protocol integration (CI only)
+
+The disposable CI matrix now has three independent cases:
+
+| Browser transport | Mail transport | Purpose |
+| --- | --- | --- |
+| HTTP localhost | Django filesystem | Baseline regression |
+| HTTPS localhost | Django filesystem | Secure browser cookie, TLS and login regression |
+| HTTPS localhost | Django SMTP over TCP | Real SMTP protocol, mail routing and browser authentication |
+
+For the SMTP case, `tests/owner-auth-smtp-sink.mjs` binds **only**
+`127.0.0.1:1025` and accepts SMTP commands into an in-memory mailbox. The
+actual Django `smtp.EmailBackend` contacts that local listener, which
+captures the owner email without sending anything to the Internet. The test
+checks the envelope sender/recipient, confirms no SMTP delivery occurs in
+the HTTP request path, parses the one-time link in memory and completes the
+same Chromium passwordless flow through login and logout. Its local SMTP
+connection and in-memory messages are destroyed at the end of the run.
+
+This establishes network SMTP protocol compatibility and integration with
+the worker; it **does not** verify sender reputation, actual mail provider
+credentials, external deliverability, SPF/DKIM/DMARC, or real user inboxes.
+Those are separate staging release gates. No real SMTP password is used in
+this test.
