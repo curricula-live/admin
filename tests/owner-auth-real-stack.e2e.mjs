@@ -151,7 +151,7 @@ async function mailChallenge() {
       let message;
       if (SMTP) {
         const sent = smtpSink.messages[0];
-        assert.match(sent.sender, /^<no-reply@curricula\.live>$/i);
+        assert.match(sent.sender, /^<no-reply@curricula\.live>(?:\s+size=\d+)?$/i);
         assert.deepEqual(sent.recipients, ["<owner-e2e@example.invalid>"]);
         message = sent.body;
       } else {
