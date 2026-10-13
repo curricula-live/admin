@@ -54,3 +54,9 @@ button:focus-visible, input:focus-visible { outline: 3px solid #4b5563; outline-
 .atlas-relation strong { font-size:.92rem; }
 .atlas-relation:hover,.atlas-concept:hover { border-color:#616a72; }
 @media(max-width:700px) { .atlas-header { padding:1rem; } .atlas-workspace { grid-template-columns:1fr; } .atlas-sidebar { border-right:0; border-bottom:1px solid #d8dcdf; } .atlas-concepts { max-height:240px; } .atlas-main { padding:1.5rem; } }
+
+.atlas-area-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:.75rem; margin:1.5rem 0; }
+.atlas-area-card { display:flex; flex-direction:column; gap:.65rem; text-align:left; padding:1.25rem; margin:0; background:white; color:#1d2327; border:1px solid #cfd5db; border-radius:8px; }
+.atlas-area-card strong { font-size:1.1rem; }
+.atlas-area-card > span:last-child { color:#64707a; font-size:.8rem; }
+.atlas-area-card:hover { border-color:#303942; background:#f0f2f3; }
