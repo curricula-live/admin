@@ -1,8 +1,12 @@
 "use client";
 import { useMemo, useState } from "react";
-import { nodes, edges, type AtlasNode } from "./atlas-fixture";
+import { nodes as snapshotNodes, edges as snapshotEdges, type AtlasNode, type AtlasEdge } from "./atlas-fixture";
 
-export default function AtlasExplorer() {
+export type AtlasExplorerData = { nodes: readonly AtlasNode[]; edges: readonly AtlasEdge[]; source: string };
+
+export default function AtlasExplorer({ data }: { data?: AtlasExplorerData }) {
+  const nodes = data?.nodes ?? snapshotNodes;
+  const edges = data?.edges ?? snapshotEdges;
   const [selected, setSelected] = useState("view:computer-science");
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("all");
@@ -28,7 +32,7 @@ export default function AtlasExplorer() {
           <option value="all">All areas</option>
           {areas.filter(a => a !== "Overview").map(area => <option key={area} value={area}>{area}</option>)}
         </select>
-        <p className="atlas-muted">{visible.length} concepts · canonical Git snapshot · not published</p>
+        <p className="atlas-muted">{visible.length} concepts · {data?.source ?? "Canonical development Git snapshot · not published"}</p>
         <nav aria-label="Concepts" className="atlas-concepts">
           {visible.map(n => <button key={n.id} aria-current={selected === n.id ? "page" : undefined} className={selected === n.id ? "atlas-concept active" : "atlas-concept"} onClick={() => setSelected(n.id)}>
             <span>{n.label}</span><small>{n.area}</small>
@@ -45,7 +49,7 @@ export default function AtlasExplorer() {
         <p className="atlas-overline">CONCEPT INSPECTOR</p>
         <h2>{active.label}</h2>
         <p className="atlas-identity"><strong>Identity:</strong> <code>{active.id}</code></p>
-        <div className="atlas-warning" role="status">{active.id.startsWith("view:") ? "Navigation overview (not a canonical concept)." : "Canonical UUID from development Git data. Publication and scholarly review are not verified; no evidence is attached."}</div>
+        <div className="atlas-warning" role="status">{active.id.startsWith("view:") ? "Navigation overview (not a canonical concept)." : "Canonical UUID from an unverified knowledge source. Publication and scholarly review are not verified; no evidence is attached."}</div>
         <h3>Definition</h3>
         <p>{active.definition ?? "No reviewed definition available."}</p>
         <h3>Relationships <span className="atlas-muted">({connections.length})</span></h3>
@@ -60,9 +64,9 @@ export default function AtlasExplorer() {
           {!connections.length && <p className="atlas-muted">No relationships recorded.</p>}
         </div>
         <h3>References & provenance</h3>
-        <p className="atlas-muted">No verified references are attached. The identifier and relations are taken from curricula-live/data development JSONL; this is not evidence of publication or scholarly review.</p>
+        <p className="atlas-muted">No verified references are attached. The identities and relations originate from canonical development data. This is not evidence of publication or scholarly review.</p>
         <h3>Review state</h3>
-        <p>{active.status === "missing" ? "Navigation overview / missing evidence" : "Canonical identity — unreviewed and not verified published"}</p>
+        <p>{active.status === "missing" ? "Navigation overview / missing evidence" : "Canonical identity — review and publication unverified"}</p>
       </section>
     </div>
   );
