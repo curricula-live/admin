@@ -48,7 +48,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: curricula-live/api
-          ref: 30fb4bb1cdf7c210b184b26ce7112adac8a571c8
+          ref: e910bdf1847dbbcf65735aeba2e7bc8ffd7f5d65
           path: api-integration
           persist-credentials: false
       - name: Checkout fixed canonical data schema
