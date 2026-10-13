@@ -30,3 +30,9 @@ The feature flags and non-public staging email destination are required; do not 
 Admin and API `main` promotion, Vercel deployment, public-domain configuration, external SMTP credentials, production flags and database migrations require separate approval. An isolated CI success is not proof of actual owner-email delivery or a live preview.
 
 See [architecture dependencies](docs/architecture/dependencies.md), [automation safety](docs/automation-policy.md) and [HTTPS/SMTP integration](docs/owner-https-loopback-test.md) (the last is introduced by PR #12).
+
+## Live read-only Atlas staging data
+
+The read-only Atlas can opt into `ATLAS_PUBLIC_DATA_PREVIEW_ENABLED=true` when `CURRICULA_API_ORIGIN` points to the Django API with `V2_READ_PREVIEW_ENABLED=true`. The app performs an unauthenticated server-side GET to `/v2-preview/atlas/`; it does not forward owner cookies or BFF secrets. The endpoint is strictly bounded and staging-only, and requires the pre-existing v2 knowledge tables. When disabled or unavailable, the view displays an explicitly labeled small canonical **development Git snapshot** rather than inventing publication status.
+
+The preview API contract is `atlas-preview@1` with `release_verified=false` and `review_verified=false`. This is not a substitute for the future public **published** versioned API. The permanent public API must stay open for anonymous knowledge GETs; admin login only gates the admin shell, not the knowledge itself.

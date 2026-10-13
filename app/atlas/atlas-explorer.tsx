@@ -1,11 +1,16 @@
 "use client";
 import { useMemo, useState } from "react";
-import { nodes, edges, type AtlasNode } from "./atlas-fixture";
+import { nodes as snapshotNodes, edges as snapshotEdges, type AtlasNode, type AtlasEdge } from "./atlas-fixture";
 
-export default function AtlasExplorer() {
+export type AtlasExplorerData = { nodes: readonly AtlasNode[]; edges: readonly AtlasEdge[]; source: string };
+
+export default function AtlasExplorer({ data }: { data?: AtlasExplorerData }) {
+  const nodes = data?.nodes ?? snapshotNodes;
+  const edges = data?.edges ?? snapshotEdges;
   const [selected, setSelected] = useState("view:computer-science");
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("all");
+  const [relationshipView, setRelationshipView] = useState<"list" | "map">("list");
   const active = nodes.find(n => n.id === selected) ?? nodes[0];
   const visible = useMemo(() => nodes.filter(n =>
     (filter === "all" || n.area === filter) &&
@@ -28,7 +33,7 @@ export default function AtlasExplorer() {
           <option value="all">All areas</option>
           {areas.filter(a => a !== "Overview").map(area => <option key={area} value={area}>{area}</option>)}
         </select>
-        <p className="atlas-muted">{visible.length} concepts · canonical Git snapshot · not published</p>
+        <p className="atlas-muted">{visible.length} concepts · {data?.source ?? "Canonical development Git snapshot · not published"}</p>
         <nav aria-label="Concepts" className="atlas-concepts">
           {visible.map(n => <button key={n.id} aria-current={selected === n.id ? "page" : undefined} className={selected === n.id ? "atlas-concept active" : "atlas-concept"} onClick={() => setSelected(n.id)}>
             <span>{n.label}</span><small>{n.area}</small>
@@ -45,24 +50,69 @@ export default function AtlasExplorer() {
         <p className="atlas-overline">CONCEPT INSPECTOR</p>
         <h2>{active.label}</h2>
         <p className="atlas-identity"><strong>Identity:</strong> <code>{active.id}</code></p>
-        <div className="atlas-warning" role="status">{active.id.startsWith("view:") ? "Navigation overview (not a canonical concept)." : "Canonical UUID from development Git data. Publication and scholarly review are not verified; no evidence is attached."}</div>
+        <div className="atlas-warning" role="status">{active.id.startsWith("view:") ? "Navigation overview (not a canonical concept)." : "Canonical UUID from an unverified knowledge source. Publication and scholarly review are not verified; no evidence is attached."}</div>
+        {active.id.startsWith("view:") && (
+          <section aria-label="Explore areas" className="atlas-area-grid">
+            {areas.filter(area => area !== "Overview").map(area => {
+              const candidates = nodes.filter(n => n.area === area);
+              const entry = candidates.find(n => n.label === "Operating System") ?? candidates[0];
+              return (
+                <button key={area} className="atlas-area-card" onClick={() => {
+                  setFilter(area); setQuery(""); if (entry) setSelected(entry.id);
+                }}>
+                  <span className="atlas-overline">EXPLORE AREA</span>
+                  <strong>{area}</strong>
+                  <span>{candidates.length} concepts in current dataset →</span>
+                </button>
+              );
+            })}
+          </section>
+        )}
         <h3>Definition</h3>
-        <p>{active.definition ?? "No reviewed definition available."}</p>
-        <h3>Relationships <span className="atlas-muted">({connections.length})</span></h3>
-        <div className="atlas-relationships">
-          {connections.map((e, i) => {
-            const other = related(e.from === active.id ? e.to : e.from);
-            return <button key={i} onClick={() => other && setSelected(other.id)} className="atlas-relation">
-              <span>{e.from === active.id ? "Outgoing" : "Incoming"} · {e.type}</span>
-              <strong>{other?.label ?? "Unknown concept"} →</strong>
-            </button>;
-          })}
-          {!connections.length && <p className="atlas-muted">No relationships recorded.</p>}
+        <p>{active.id.startsWith("view:") ? "Choose an area to inspect canonical concepts and their relationships." : (active.definition ?? "No reviewed definition available.")}</p>
+        <div className="atlas-relation-heading">
+          <h3>Relationships <span className="atlas-muted">({connections.length})</span></h3>
+          <div role="group" aria-label="Relationship view">
+            <button type="button" aria-pressed={relationshipView === "list"} onClick={() => setRelationshipView("list")}>List</button>
+            <button type="button" aria-pressed={relationshipView === "map"} onClick={() => setRelationshipView("map")}>Map</button>
+          </div>
         </div>
+        {relationshipView === "map" && connections.length > 0 && (
+          <section className="atlas-context-map" aria-label="Contextual relationship map">
+            <div className="atlas-map-center"><span>Selected concept</span><strong>{active.label}</strong></div>
+            <div className="atlas-map-neighbors">
+              {connections.map(e => {
+                const outgoing = e.from === active.id;
+                const other = related(outgoing ? e.to : e.from);
+                return (
+                  <button type="button" className="atlas-map-neighbor" key={e.id}
+                    onClick={() => other && setSelected(other.id)}>
+                    <span>{outgoing ? "→" : "←"} {e.type.replaceAll("_", " ")}</span>
+                    <strong>{other?.label ?? "Unknown concept"}</strong>
+                    <small>Statement {e.id}</small>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+        )}
+        {relationshipView === "list" && (
+          <div className="atlas-relationships">
+            {connections.map(e => {
+              const other = related(e.from === active.id ? e.to : e.from);
+              return <button type="button" key={e.id} onClick={() => other && setSelected(other.id)} className="atlas-relation">
+                <span>{e.from === active.id ? "Outgoing" : "Incoming"} · {e.type.replaceAll("_", " ")}</span>
+                <strong>{other?.label ?? "Unknown concept"} →</strong>
+                <small>Statement: {e.id}</small>
+              </button>;
+            })}
+            {!connections.length && <p className="atlas-muted">No relationships recorded in the current dataset.</p>}
+          </div>
+        )}
         <h3>References & provenance</h3>
-        <p className="atlas-muted">No verified references are attached. The identifier and relations are taken from curricula-live/data development JSONL; this is not evidence of publication or scholarly review.</p>
+        <p className="atlas-muted">No verified references are attached. The identities and relations originate from canonical development data. This is not evidence of publication or scholarly review.</p>
         <h3>Review state</h3>
-        <p>{active.status === "missing" ? "Navigation overview / missing evidence" : "Canonical identity — unreviewed and not verified published"}</p>
+        <p>{active.status === "missing" ? "Navigation overview / missing evidence" : "Canonical identity — review and publication unverified"}</p>
       </section>
     </div>
   );
