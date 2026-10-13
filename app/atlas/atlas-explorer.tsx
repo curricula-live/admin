@@ -3,7 +3,7 @@ import { useMemo, useState } from "react";
 import { nodes, edges, type AtlasNode } from "./atlas-fixture";
 
 export default function AtlasExplorer() {
-  const [selected, setSelected] = useState("fixture:cs");
+  const [selected, setSelected] = useState("view:computer-science");
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("all");
   const active = nodes.find(n => n.id === selected) ?? nodes[0];
@@ -20,7 +20,7 @@ export default function AtlasExplorer() {
       <aside className="atlas-sidebar" aria-label="Knowledge navigation">
         <p className="atlas-overline">KNOWLEDGE / EXPLORER</p>
         <h2>Computer Science</h2>
-        <button className="atlas-text-button" onClick={() => { setSelected("fixture:cs"); setFilter("all"); setQuery(""); }}>Overview</button>
+        <button className="atlas-text-button" onClick={() => { setSelected("view:computer-science"); setFilter("all"); setQuery(""); }}>Overview</button>
         <label htmlFor="atlas-search">Search concepts</label>
         <input id="atlas-search" type="search" value={query} onChange={e => setQuery(e.target.value)} placeholder="Name or identity…" />
         <label htmlFor="atlas-filter">Area</label>
@@ -28,7 +28,7 @@ export default function AtlasExplorer() {
           <option value="all">All areas</option>
           {areas.filter(a => a !== "Overview").map(area => <option key={area} value={area}>{area}</option>)}
         </select>
-        <p className="atlas-muted">{visible.length} concepts · development dataset</p>
+        <p className="atlas-muted">{visible.length} concepts · canonical Git snapshot · not published</p>
         <nav aria-label="Concepts" className="atlas-concepts">
           {visible.map(n => <button key={n.id} aria-current={selected === n.id ? "page" : undefined} className={selected === n.id ? "atlas-concept active" : "atlas-concept"} onClick={() => setSelected(n.id)}>
             <span>{n.label}</span><small>{n.area}</small>
@@ -38,14 +38,14 @@ export default function AtlasExplorer() {
       </aside>
       <section className="atlas-main" aria-label="Selected concept">
         <div className="atlas-breadcrumb">
-          <button onClick={() => { setSelected("fixture:cs"); setFilter("all"); }}>Computer Science</button>
+          <button onClick={() => { setSelected("view:computer-science"); setFilter("all"); }}>Computer Science</button>
           <span>/</span>
           <button onClick={() => { setFilter(active.area === "Overview" ? "all" : active.area); setQuery(""); }}>{active.area}</button>
         </div>
         <p className="atlas-overline">CONCEPT INSPECTOR</p>
         <h2>{active.label}</h2>
         <p className="atlas-identity"><strong>Identity:</strong> <code>{active.id}</code></p>
-        <div className="atlas-warning" role="status">Development fixture — not a published canonical concept. No reviewed scholarly evidence is attached.</div>
+        <div className="atlas-warning" role="status">{active.id.startsWith("view:") ? "Navigation overview (not a canonical concept)." : "Canonical UUID from development Git data. Publication and scholarly review are not verified; no evidence is attached."}</div>
         <h3>Definition</h3>
         <p>{active.definition ?? "No reviewed definition available."}</p>
         <h3>Relationships <span className="atlas-muted">({connections.length})</span></h3>
@@ -60,9 +60,9 @@ export default function AtlasExplorer() {
           {!connections.length && <p className="atlas-muted">No relationships recorded.</p>}
         </div>
         <h3>References & provenance</h3>
-        <p className="atlas-muted">No verified references are attached. This concept is part of the explicitly synthetic development dataset. Canonical UUIDs and reviewed sources must come from the data publication pipeline.</p>
+        <p className="atlas-muted">No verified references are attached. The identifier and relations are taken from curricula-live/data development JSONL; this is not evidence of publication or scholarly review.</p>
         <h3>Review state</h3>
-        <p>{active.status === "missing" ? "Missing evidence and definition" : "Unreviewed development fixture"}</p>
+        <p>{active.status === "missing" ? "Navigation overview / missing evidence" : "Canonical identity — unreviewed and not verified published"}</p>
       </section>
     </div>
   );
