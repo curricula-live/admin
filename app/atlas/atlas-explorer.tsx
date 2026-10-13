@@ -50,8 +50,25 @@ export default function AtlasExplorer({ data }: { data?: AtlasExplorerData }) {
         <h2>{active.label}</h2>
         <p className="atlas-identity"><strong>Identity:</strong> <code>{active.id}</code></p>
         <div className="atlas-warning" role="status">{active.id.startsWith("view:") ? "Navigation overview (not a canonical concept)." : "Canonical UUID from an unverified knowledge source. Publication and scholarly review are not verified; no evidence is attached."}</div>
+        {active.id.startsWith("view:") && (
+          <section aria-label="Explore areas" className="atlas-area-grid">
+            {areas.filter(area => area !== "Overview").map(area => {
+              const candidates = nodes.filter(n => n.area === area);
+              const entry = candidates.find(n => n.label === "Operating System") ?? candidates[0];
+              return (
+                <button key={area} className="atlas-area-card" onClick={() => {
+                  setFilter(area); setQuery(""); if (entry) setSelected(entry.id);
+                }}>
+                  <span className="atlas-overline">EXPLORE AREA</span>
+                  <strong>{area}</strong>
+                  <span>{candidates.length} concepts in current dataset →</span>
+                </button>
+              );
+            })}
+          </section>
+        )}
         <h3>Definition</h3>
-        <p>{active.definition ?? "No reviewed definition available."}</p>
+        <p>{active.id.startsWith("view:") ? "Choose an area to inspect canonical concepts and their relationships." : (active.definition ?? "No reviewed definition available.")}</p>
         <h3>Relationships <span className="atlas-muted">({connections.length})</span></h3>
         <div className="atlas-relationships">
           {connections.map((e, i) => {
