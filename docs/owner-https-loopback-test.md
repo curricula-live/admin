@@ -1,7 +1,7 @@
 # Disposable HTTPS owner-auth browser fixture
 
-The cross-repository authentication CI now runs a two-value transport
-matrix: `http` and `https`. Both scenarios execute actual Chromium,
+The cross-repository authentication CI now runs three transport/mail
+configurations (`http/file`, `https/file`, `https/smtp`). Each executes Chromium,
 Next.js, Django, PostgreSQL 16, the owner email outbox worker, and
 Django's temporary filesystem email backend. No external email is sent.
 
