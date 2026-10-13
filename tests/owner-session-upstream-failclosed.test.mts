@@ -9,14 +9,15 @@ import { atlasAccessDecision } from "../lib/server/owner-access-policy.ts";
 
 const token = "a".repeat(48);
 const origin = "http://127.0.0.1:8000";
-const now = new Date("2026-10-13T00:00:00.000Z");
+const now = new Date();
+const expiresAt = new Date(now.getTime() + 60 * 60 * 1000);
 const attestation = {
   contract_version: OWNER_SESSION_CONTRACT,
   authenticated: true,
   active: true,
   role: "owner",
   subject_id: "c74fe051-ac5e-521b-8770-3180fb0decb6",
-  expires_at: "2026-10-13T00:01:00.000Z",
+  expires_at: expiresAt.toISOString(),
 };
 
 test("upstream outage and malformed responses never authorize Atlas", async () => {
@@ -41,7 +42,7 @@ test("attestation expiry is enforced at verification boundary", async () => {
   assert.equal(atlasAccessDecision(true, valid), "owner");
 
   const expired = await verifyOwnerSession(
-    token, origin, false, requester, new Date("2026-10-13T00:01:00.000Z")
+    token, origin, false, requester, expiresAt
   );
   assert.equal(expired, null);
   assert.equal(atlasAccessDecision(true, expired), "unauthorized");
