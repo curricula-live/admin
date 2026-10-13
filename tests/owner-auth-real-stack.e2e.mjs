@@ -7,12 +7,21 @@
  */
 import assert from "node:assert/strict";
 import { spawn, execFileSync } from "node:child_process";
+import { createServer as createHttpsServer } from "node:https";
+import { request as httpRequest } from "node:http";
+import { connect as tcpConnect } from "node:net";
+import { readFileSync } from "node:fs";
 import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
+import { startSmtpSink } from "./owner-auth-smtp-sink.mjs";
 
-const ADMIN = "http://localhost:3000";
+const TLS = process.env.OWNER_E2E_TRANSPORT === "https";
+const MAIL_TRANSPORT = process.env.OWNER_E2E_MAIL_TRANSPORT || "file";
+if (!["file", "smtp"].includes(MAIL_TRANSPORT)) throw Error("Unexpected isolated mail transport");
+const SMTP = MAIL_TRANSPORT === "smtp";
+const ADMIN = TLS ? "https://localhost:3443" : "http://localhost:3000";
 const API = "http://127.0.0.1:8000";
 const OWNER_EMAIL = "owner-e2e@example.invalid";
 const COOKIE_NAME = "__Host-curricula_admin_session";
@@ -23,7 +32,9 @@ const hmacSecret = "disposable-fullstack-challenge-HMAC-fixture-2026";
 const rateSecret = "disposable-fullstack-hashed-quota-fixture-2026";
 let djangoProcess;
 let nextProcess;
+let tlsProxy;
 let spool;
+let smtpSink;
 let logs = "";
 const env = { ...process.env };
 
@@ -52,6 +63,55 @@ function start(command, args, cwd, stage) {
   }
   return proc;
 }
+async function startTlsProxy() {
+  const cert = process.env.OWNER_E2E_TLS_CERT;
+  const key = process.env.OWNER_E2E_TLS_KEY;
+  if (!cert || !key) die("Temporary TLS certificate and key required for HTTPS fixture");
+  tlsProxy = createHttpsServer({
+    cert: readFileSync(cert),
+    key: readFileSync(key),
+  }, (request, response) => {
+    const upstream = httpRequest({
+      hostname: "127.0.0.1",
+      port: 3000,
+      method: request.method,
+      path: request.url,
+      headers: { ...request.headers, host: "localhost:3000" },
+    }, result => {
+      response.writeHead(result.statusCode || 502, result.headers);
+      result.pipe(response);
+    });
+    upstream.on("error", () => {
+      if (!response.headersSent) response.writeHead(502);
+      response.end();
+    });
+    request.pipe(upstream);
+  });
+  // Next dev's Turbopack/HMR client uses WebSocket upgrades. Tunnel those
+  // only to the local Next test server so the page can hydrate over HTTPS.
+  tlsProxy.on("upgrade", (request, client, head) => {
+    const upstream = tcpConnect(3000, "127.0.0.1");
+    upstream.once("connect", () => {
+      const lines = [`${request.method} ${request.url} HTTP/1.1`];
+      for (let i = 0; i < request.rawHeaders.length; i += 2) {
+        const key = request.rawHeaders[i];
+        const value = /^host$/i.test(key) ? "localhost:3000" : request.rawHeaders[i + 1];
+        lines.push(`${key}: ${value}`);
+      }
+      upstream.write(lines.join("\r\n") + "\r\n\r\n");
+      if (head.length) upstream.write(head);
+      client.pipe(upstream);
+      upstream.pipe(client);
+    });
+    upstream.on("error", () => client.destroy());
+    client.on("error", () => upstream.destroy());
+  });
+  await new Promise((resolveReady, rejectReady) => {
+    tlsProxy.once("error", rejectReady);
+    tlsProxy.listen(3443, "127.0.0.1", resolveReady);
+  });
+}
+
 async function run(command, args, cwd) {
   const proc = start(command, args, cwd, "worker");
   const exitCode = await new Promise((resolveExit, rejectExit) => {
@@ -85,10 +145,19 @@ async function call(path, method = "GET", body, headers = {}) {
 const origin = { Origin: ADMIN, "Sec-Fetch-Site": "same-origin" };
 async function mailChallenge() {
   for (let i = 0; i < 40; i++) {
-    const names = await readdir(spool);
-    if (names.length) {
-      assert.equal(names.length, 1, "Exactly one message expected");
-      const message = await readFile(join(spool, names[0]), "utf8");
+    const count = SMTP ? smtpSink.messages.length : (await readdir(spool)).length;
+    if (count) {
+      assert.equal(count, 1, "Exactly one owner email expected");
+      let message;
+      if (SMTP) {
+        const sent = smtpSink.messages[0];
+        assert.match(sent.sender, /^<no-reply@curricula\.live>(?:\s+size=\d+)?$/i);
+        assert.deepEqual(sent.recipients, ["<owner-e2e@example.invalid>"]);
+        message = sent.body;
+      } else {
+        const names = await readdir(spool);
+        message = await readFile(join(spool, names[0]), "utf8");
+      }
       assert.match(message, /To: owner-e2e@example\.invalid/i);
       const challenge = message.match(/#challenge=([A-Za-z0-9_-]{43})/);
       if (!challenge) die("Worker email did not contain a valid opaque challenge");
@@ -96,7 +165,7 @@ async function mailChallenge() {
     }
     await sleep(150);
   }
-  die("Worker did not create an isolated filesystem email");
+  die("Isolated mail transport did not capture an owner email");
 }
 
 async function scenario() {
@@ -117,7 +186,8 @@ async function scenario() {
   assertSafeHeaders(requested);
   assert.equal(db("select count(*) from admin.email_challenge"), "1");
   assert.equal(db("select count(*) from admin.owner_email_outbox"), "1");
-  assert.equal((await readdir(spool)).length, 0, "HTTP request must not send email synchronously");
+  assert.equal(SMTP ? smtpSink.messages.length : (await readdir(spool)).length, 0,
+    "HTTP request must not send email synchronously");
 
   const preview = await call("/login/verify");
   assert.equal(preview.status, 200);
@@ -143,10 +213,30 @@ async function scenario() {
   let page;
   let session;
   try {
-    context = await browser.newContext();
+    context = await browser.newContext({
+      // Disposable self-signed local CA; this does not assess public PKI trust.
+      ignoreHTTPSErrors: TLS,
+    });
     page = await context.newPage();
+    const failures = [];
+    page.on("requestfailed", request => {
+      const target = new URL(request.url());
+      failures.push(`request: ${target.origin}${target.pathname} -> ${request.failure()?.errorText || "unknown"}`);
+    });
+    page.on("pageerror", error => failures.push(`page: ${error.name}: ${error.message.slice(0, 160)}`));
     await page.goto(ADMIN + "/login/verify#challenge=" + challenge);
-    await page.getByRole("button", { name: "Confirm sign-in" }).waitFor();
+    try {
+      await page.getByRole("button", { name: "Confirm sign-in" }).waitFor({ timeout: 12000 });
+    } catch (error) {
+      const state = await page.getByRole("status").allTextContents();
+      const alerts = await page.getByRole("alert").allTextContents();
+      const scripts = await page.locator("script[src]").evaluateAll(
+        nodes => [...new Set(nodes.map(node => new URL(node.src).origin))]
+      );
+      throw Error("Verification page failed to hydrate (no challenge values logged): " +
+        JSON.stringify({ state, alerts, scriptOrigins: scripts, failures: failures.slice(0, 12) }) +
+        " / " + error.name);
+    }
     assert.equal(new URL(page.url()).hash, "", "Token fragment must be erased after page load");
     assert.equal(db("select count(*) from admin.owner_session"), "0",
       "Loading the email link must not create a session");
@@ -207,18 +297,23 @@ async function scenario() {
     await context?.close();
     await browser.close();
   }
-  console.log("PASS: real browser -> Next.js -> Django -> PostgreSQL -> email worker");
+  console.log(`PASS: ${TLS ? "TLS browser" : "HTTP browser"} + isolated ${MAIL_TRANSPORT} delivery -> Next.js -> Django -> PostgreSQL`);
 
 }
 try {
   if (!env.DATABASE_URL || !env.DJANGO_SECRET_KEY) die("Disposable CI database variables required");
-  spool = await mkdtemp(join(tmpdir(), "curricula-e2e-mail-"));
+  if (SMTP) smtpSink = await startSmtpSink();
+  else spool = await mkdtemp(join(tmpdir(), "curricula-e2e-mail-"));
   Object.assign(env, {
     APP_ENV: "staging",
     DJANGO_DEBUG: "false",
     DJANGO_ALLOWED_HOSTS: "127.0.0.1,localhost",
-    DJANGO_EMAIL_BACKEND: "django.core.mail.backends.filebased.EmailBackend",
-    DJANGO_EMAIL_FILE_PATH: spool,
+    DJANGO_EMAIL_BACKEND: SMTP
+      ? "django.core.mail.backends.smtp.EmailBackend"
+      : "django.core.mail.backends.filebased.EmailBackend",
+    DJANGO_EMAIL_FILE_PATH: spool || "",
+    DJANGO_EMAIL_HOST: "127.0.0.1",
+    DJANGO_EMAIL_PORT: "1025",
     OWNER_AUTH_ENABLED: "true",
     OWNER_AUTH_HTTP_ENABLED: "true",
     OWNER_ASYNC_MAIL_ENABLED: "true",
@@ -244,6 +339,8 @@ try {
   nextProcess = start(process.execPath, [
     resolve("node_modules/next/dist/bin/next"), "dev", "-H", "127.0.0.1", "-p", "3000"
   ], process.cwd(), "next");
+  await waitFor("http://127.0.0.1:3000/login", nextProcess);
+  if (TLS) await startTlsProxy();
   await waitFor(ADMIN + "/login", nextProcess);
   await scenario();
 } catch (error) {
@@ -260,5 +357,7 @@ try {
     ]);
     if (proc.exitCode === null) proc.kill("SIGKILL");
   }
+  if (tlsProxy) await new Promise(resolveClose => tlsProxy.close(resolveClose));
+  if (smtpSink) await smtpSink.close();
   if (spool) await rm(spool, { recursive: true, force: true });
 }

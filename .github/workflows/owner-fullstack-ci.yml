@@ -10,6 +10,16 @@ permissions:
 jobs:
   fullstack-owner-auth:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - transport: http
+            mail: file
+          - transport: https
+            mail: file
+          - transport: https
+            mail: smtp
     timeout-minutes: 20
     services:
       postgres:
@@ -38,7 +48,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: curricula-live/api
-          ref: f0bf25b242761a8f7a548955cb1ed1d4dead4176
+          ref: e910bdf1847dbbcf65735aeba2e7bc8ffd7f5d65
           path: api-integration
           persist-credentials: false
       - name: Checkout fixed canonical data schema
@@ -71,6 +81,19 @@ jobs:
         run: |
           npm install --no-save --package-lock=false --ignore-scripts playwright@1.56.1
           npx playwright install --with-deps chromium
+      - name: Generate disposable localhost TLS identity
+        if: matrix.transport == 'https'
+        run: |
+          openssl req -x509 -newkey rsa:2048 -nodes -sha256 -days 1 \
+            -keyout "$RUNNER_TEMP/owner-e2e-localhost-key.pem" \
+            -out "$RUNNER_TEMP/owner-e2e-localhost-cert.pem" \
+            -subj "/CN=localhost" \
+            -addext "subjectAltName=DNS:localhost,IP:127.0.0.1" >/dev/null 2>&1
+          {
+            printf 'OWNER_E2E_TLS_CERT=%s\n' "$RUNNER_TEMP/owner-e2e-localhost-cert.pem"
+            printf 'OWNER_E2E_TLS_KEY=%s\n' "$RUNNER_TEMP/owner-e2e-localhost-key.pem"
+            printf 'NODE_EXTRA_CA_CERTS=%s\n' "$RUNNER_TEMP/owner-e2e-localhost-cert.pem"
+          } >> "$GITHUB_ENV"
       - name: Install operational SQL in disposable PostgreSQL
         run: |
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f data-integration/database/migrations/0002_admin_owner.sql
@@ -79,5 +102,8 @@ jobs:
       - name: Verify Django's configured system checks
         working-directory: api-integration
         run: uv run python manage.py check
-      - name: Run real end-to-end login with disposable data, no external mail
+      - name: Run real browser login over isolated transport
+        env:
+          OWNER_E2E_TRANSPORT: ${{ matrix.transport }}
+          OWNER_E2E_MAIL_TRANSPORT: ${{ matrix.mail }}
         run: node tests/owner-auth-real-stack.e2e.mjs

@@ -15,7 +15,7 @@ export function ownerLoginEnabled(): boolean {
   const production = process.env.NODE_ENV === "production";
   return ownerAuthStageEnabled(process.env.APP_ENV, process.env.ADMIN_OWNER_LOGIN_ENABLED) &&
     typeof secret === "string" && secret.length >= 32 &&
-    configuredAdminOrigin(process.env.ADMIN_PUBLIC_ORIGIN, production) !== null &&
+    configuredAdminOrigin(process.env.ADMIN_PUBLIC_ORIGIN, production, process.env.APP_ENV) !== null &&
     authBackendEndpoint(process.env.CURRICULA_API_ORIGIN, production, "request") !== null;
 }
 
@@ -24,7 +24,8 @@ export function browserRequestAllowed(request: Request): boolean {
     request.headers.get("origin"),
     request.headers.get("sec-fetch-site"),
     process.env.ADMIN_PUBLIC_ORIGIN,
-    process.env.NODE_ENV === "production"
+    process.env.NODE_ENV === "production",
+    process.env.APP_ENV
   );
 }
 
