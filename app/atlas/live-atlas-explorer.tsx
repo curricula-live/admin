@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { PublicConcept, PublicDetail, PublicStatement } from "@/lib/server/public-atlas";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -9,6 +9,7 @@ export default function LiveAtlasExplorer({concepts, releaseCommit}: {concepts:P
   const [query,setQuery] = useState("");
   const [area,setArea] = useState<string|null>(null);
   const [selected,setSelected] = useState<string|null>(null);
+  const selectionRef = useRef<string|null>(null);
   const [detail,setDetail] = useState<PublicDetail|null>(null);
   const [error,setError] = useState<string|null>(null);
   const [loading,setLoading] = useState(false);
@@ -31,8 +32,11 @@ export default function LiveAtlasExplorer({concepts, releaseCommit}: {concepts:P
       const params = new URLSearchParams(window.location.search);
       const id = params.get("concept");
       const next = id && UUID.test(id) && concepts.some(c=>c.id===id) ? id : null;
+      if (selectionRef.current !== next) {
+        setDetail(null); setError(null); setLoading(Boolean(next));
+      }
+      selectionRef.current = next;
       setSelected(next);
-      setDetail(null); setError(null); setLoading(Boolean(next));
       setArea(params.get("area"));
       setQuery(params.get("q")??"");
     };
@@ -51,13 +55,16 @@ export default function LiveAtlasExplorer({concepts, releaseCommit}: {concepts:P
       .finally(()=>{if (!controller.signal.aborted) setLoading(false);});
     return () => controller.abort();
   },[selected,releaseCommit]);
-  const navigate = (nextId:string|null,nextArea:string|null=area,nextQuery:string=query) => {
+  const navigate = (nextId:string|null,nextArea:string|null=area,nextQuery:string=query,replace=false) => {
     const params = new URLSearchParams();
     if (nextId) params.set("concept",nextId);
     if (nextArea) params.set("area",nextArea);
     if (nextQuery) params.set("q",nextQuery);
-    window.history.pushState(null,"",`/atlas${params.size?`?${params}`:""}`);
-    setDetail(null); setError(null); setLoading(Boolean(nextId));
+    window.history[replace?"replaceState":"pushState"](null,"",`/atlas${params.size?`?${params}`:""}`);
+    if (selectionRef.current !== nextId) {
+      setDetail(null); setError(null); setLoading(Boolean(nextId));
+    }
+    selectionRef.current = nextId;
     setSelected(nextId); setArea(nextArea); setQuery(nextQuery);
   };
   const matching = detail?.statements.filter(s=>filter==="all" ||
@@ -71,7 +78,7 @@ export default function LiveAtlasExplorer({concepts, releaseCommit}: {concepts:P
       <p className="atlas-muted">Alphabetic areas organize navigation only. ACM CCS, CS2023 and CSTA memberships are not yet supplied by this release.</p>
       <button className="atlas-text-button" onClick={()=>navigate(null,null,"")}>Overview</button>
       <label htmlFor="atlas-search">Search concepts</label>
-      <input id="atlas-search" type="search" value={query} onChange={e=>navigate(selected,area,e.target.value)} placeholder="Label, slug or UUID" />
+      <input id="atlas-search" type="search" value={query} onChange={e=>navigate(selected,area,e.target.value,true)} placeholder="Label, slug or UUID" />
       <p className="atlas-muted">{visible.length} of {concepts.length} canonical concepts</p>
       <nav aria-label="Alphabetic areas" className="atlas-concepts">
         {groups.map(([letter,items])=><div key={letter}>

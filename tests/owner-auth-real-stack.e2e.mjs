@@ -257,6 +257,9 @@ async function scenario() {
       await page.getByRole("button", { name: /O \(\d+\)/ }).first().click();
       await page.getByRole("button", { name: /Operating System/ }).first().click();
       await page.getByRole("heading", { name: "Operating System", exact: true }).waitFor();
+      await page.getByRole("searchbox", { name: "Search concepts" }).fill("operating");
+      await page.getByRole("heading", { name: "Operating System", exact: true }).waitFor();
+      assert.match(new URL(page.url()).searchParams.get("q") || "", /operating/);
       assert.match(await page.locator(".atlas-main").innerText(), /Statements and relationships/);
       assert.match(await page.locator(".atlas-main").innerText(), /evidence missing/i);
       await page.getByLabel("Evidence state").selectOption("missing");
