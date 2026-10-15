@@ -3,6 +3,8 @@ name: Full-stack owner authentication (disposable CI)
 on:
   pull_request:
     branches: [dev, main]
+  push:
+    branches: [dev]
 
 permissions:
   contents: read
