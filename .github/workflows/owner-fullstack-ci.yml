@@ -39,6 +39,8 @@ jobs:
       APP_ENV: staging
       API_REPO_DIR: api-integration
       DATA_REPO_DIR: data-integration
+      PUBLIC_V2_ENABLED: "true"
+      PUBLIC_V2_RELEASE_COMMIT: c83cf9229eeae4be2c67b95931020c8ca74b8d16
     steps:
       - name: Checkout admin under test
         uses: actions/checkout@v4
@@ -48,14 +50,14 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: curricula-live/api
-          ref: e910bdf1847dbbcf65735aeba2e7bc8ffd7f5d65
+          ref: 2b9c58ed9b4635b659deb1fb03b2de8ae98e6296
           path: api-integration
           persist-credentials: false
       - name: Checkout fixed canonical data schema
         uses: actions/checkout@v4
         with:
           repository: curricula-live/data
-          ref: 1aa46b7602bedffd36cc27457d7fa91dd289b54d
+          ref: c83cf9229eeae4be2c67b95931020c8ca74b8d16
           path: data-integration
           persist-credentials: false
       - name: Set up Python
@@ -69,6 +71,9 @@ jobs:
       - name: Install pinned API dependencies
         working-directory: api-integration
         run: uv sync --frozen --dev
+      - name: Install pinned canonical data dependencies
+        working-directory: data-integration
+        run: python -m pip install -r requirements.txt
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
@@ -94,11 +99,19 @@ jobs:
             printf 'OWNER_E2E_TLS_KEY=%s\n' "$RUNNER_TEMP/owner-e2e-localhost-key.pem"
             printf 'NODE_EXTRA_CA_CERTS=%s\n' "$RUNNER_TEMP/owner-e2e-localhost-cert.pem"
           } >> "$GITHUB_ENV"
-      - name: Install operational SQL in disposable PostgreSQL
+      - name: Install canonical and operational SQL in disposable PostgreSQL
         run: |
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f data-integration/database/migrations/0001_knowledge_core.sql
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f data-integration/database/migrations/0002_admin_owner.sql
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f data-integration/database/migrations/0003_owner_mail_outbox.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f data-integration/database/migrations/0004_knowledge_release.sql
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "insert into admin.owner_principal (id,email,role,active) values ('c74fe051-ac5e-521b-8770-3180fb0decb6', 'owner-e2e@example.invalid','owner',true)"
+      - name: Publish and verify canonical knowledge in disposable PostgreSQL
+        working-directory: data-integration
+        run: |
+          python scripts/publish.py --database-url "$DATABASE_URL" apply --confirm-publish PUBLISH
+          python scripts/publish.py --database-url "$DATABASE_URL" verify
+          python -m scripts.stamp_publication --database-url "$DATABASE_URL" --confirm STAMP-VERIFIED-PUBLICATION
       - name: Verify Django's configured system checks
         working-directory: api-integration
         run: uv run python manage.py check
@@ -106,4 +119,5 @@ jobs:
         env:
           OWNER_E2E_TRANSPORT: ${{ matrix.transport }}
           OWNER_E2E_MAIL_TRANSPORT: ${{ matrix.mail }}
+          OWNER_E2E_ATLAS_RELEASE: "true"
         run: node tests/owner-auth-real-stack.e2e.mjs
