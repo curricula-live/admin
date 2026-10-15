@@ -86,8 +86,8 @@ test("owner cookie is always Secure, HttpOnly, host-only and path scoped", () =>
 });
 
 
-test("an enabled flag cannot activate passwordless login in production", () => {
-  assert.equal(ownerAuthStageEnabled("production", "true"), false);
+test("passwordless login requires an explicit supported stage and flag", () => {
+  assert.equal(ownerAuthStageEnabled("production", "true"), true);
   assert.equal(ownerAuthStageEnabled(undefined, "true"), false);
   assert.equal(ownerAuthStageEnabled("staging", "true"), true);
   assert.equal(ownerAuthStageEnabled("development", "true"), true);

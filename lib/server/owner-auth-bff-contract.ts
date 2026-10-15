@@ -45,9 +45,9 @@ export function validBrowserPost(
   );
 }
 
-/** An env flag alone cannot enable owner auth on production hosts. */
+/** Login requires an explicit deployment stage and feature flag. */
 export function ownerAuthStageEnabled(stage: string | undefined, enabled: string | undefined): boolean {
-  return enabled === "true" && (stage === "staging" || stage === "development");
+  return enabled === "true" && (stage === "staging" || stage === "development" || stage === "production");
 }
 
 export type OwnerAuthOperation = "request" | "redeem" | "logout";

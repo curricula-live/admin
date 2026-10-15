@@ -26,7 +26,6 @@ const API = "http://127.0.0.1:8000";
 const OWNER_EMAIL = "owner-e2e@example.invalid";
 const COOKIE_NAME = "__Host-curricula_admin_session";
 const apiDir = resolve(process.env.API_REPO_DIR || "api-integration");
-const dataDir = resolve(process.env.DATA_REPO_DIR || "data-integration");
 const bffSecret = "disposable-fullstack-BFF-fixture-no-real-account-2026";
 const hmacSecret = "disposable-fullstack-challenge-HMAC-fixture-2026";
 const rateSecret = "disposable-fullstack-hashed-quota-fixture-2026";
@@ -171,6 +170,10 @@ async function mailChallenge() {
 async function scenario() {
   const anonymous = await call("/atlas");
   assert.ok(redirectedToLogin(anonymous), "Anonymous SSR route must be denied");
+  if (process.env.OWNER_E2E_ATLAS_RELEASE) {
+    const direct = await call("/api/atlas/concepts/c74fe051-ac5e-521b-8770-3180fb0decb6");
+    assert.equal(direct.status, 401, "Direct concept inspector access requires owner session");
+  }
 
   for (const headers of [{}, { Origin: "https://evil.example" }]) {
     const rejected = await call("/api/auth/request", "POST", { email: OWNER_EMAIL }, headers);
@@ -208,7 +211,8 @@ async function scenario() {
   // The browser test verifies actual DOM interaction and cookie persistence;
   // HTTP-only contract checks remain in tests/owner-auth-http.e2e.mjs.
   const { chromium } = await import("playwright");
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch({ headless: true,
+    ...(process.env.OWNER_E2E_CHROMIUM ? { executablePath: process.env.OWNER_E2E_CHROMIUM } : {}) });
   let context;
   let page;
   let session;
@@ -248,6 +252,23 @@ async function scenario() {
     // The endpoint payload is already checked in the HTTP contract suite.
     await page.waitForURL("**/atlas");
     await page.getByRole("heading", { name: "Knowledge Atlas" }).waitFor();
+    if (process.env.OWNER_E2E_ATLAS_RELEASE) {
+      await page.getByRole("heading", { name: "Explore the knowledge index" }).waitFor();
+      await page.getByRole("button", { name: /O \(\d+\)/ }).first().click();
+      await page.getByRole("button", { name: /Operating System/ }).first().click();
+      await page.getByRole("heading", { name: "Operating System", exact: true }).waitFor();
+      assert.match(await page.locator(".atlas-main").innerText(), /Statements and relationships/);
+      assert.match(await page.locator(".atlas-main").innerText(), /evidence missing/i);
+      await page.getByLabel("Evidence state").selectOption("missing");
+      await page.getByRole("button", { name: "Map" }).click();
+      assert.ok(await page.getByLabel("Contextual typed graph").isVisible());
+      const { default: AxeBuilder } = await import("@axe-core/playwright");
+      const accessibility = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
+      assert.deepEqual(accessibility.violations.map(v => `${v.id}: ${v.nodes.length} affected nodes`), [],
+        "Atlas should have no WCAG A/AA violations");
+      await page.goBack();
+      await page.getByRole("heading", { name: "O index" }).waitFor();
+    }
     assert.equal(await page.evaluate(() =>
       document.cookie.includes("__Host-curricula_admin_session")), false,
       "Session bearer must never be readable from browser JavaScript");
@@ -275,6 +296,12 @@ async function scenario() {
     const allowed = await call("/atlas", "GET", undefined, cookie);
     assert.equal(allowed.status, 200);
     assert.match(await allowed.text(), /Knowledge Atlas/);
+    if (process.env.OWNER_E2E_ATLAS_RELEASE) {
+      const publicKnowledge = await fetch(API + "/v2/concepts/?q=operating-system");
+      assert.equal(publicKnowledge.status, 200, "Published knowledge must remain anonymous");
+      const payload = await publicKnowledge.json();
+      assert.equal(payload.results[0].id, "c74fe051-ac5e-521b-8770-3180fb0decb6");
+    }
 
     db("update admin.owner_principal set active=false,disabled_at=now() where email='owner-e2e@example.invalid'");
     const inactive = await call("/atlas", "GET", undefined, cookie);
@@ -291,6 +318,10 @@ async function scenario() {
     assert.equal(db("select count(*) from admin.owner_session where revoked_at is not null"), "1");
     const denied = await call("/atlas", "GET", undefined, cookie);
     assert.ok(redirectedToLogin(denied), "Revoked session must not authorize Atlas");
+    if (process.env.OWNER_E2E_ATLAS_RELEASE) {
+      const direct = await call("/api/atlas/concepts/c74fe051-ac5e-521b-8770-3180fb0decb6", "GET", undefined, cookie);
+      assert.equal(direct.status, 401, "Revoked owner session must not read inspector BFF");
+    }
     await page.goto(ADMIN + "/atlas");
     await page.waitForURL("**/login");
   } finally {

@@ -1,38 +1,54 @@
-# curricula.live — Knowledge Atlas administration
+# curricula.live Knowledge Atlas administration
 
-Independent Next.js owner workspace. Django is authoritative for owner authentication and administrative permissions. **Published educational knowledge remains publicly readable without login or API keys** through the public Django API; the Atlas viewer must not make knowledge private simply because its first interface is owner-gated.
-
-## Current development state
-
-- Passwordless owner email-link login, explicit POST confirmation, server-side session verification, secure host-only cookie, expiry, revocation and logout have been implemented across admin/API development branches.
-- An isolated Chromium + Next.js + Django + PostgreSQL integration suite exercises the browser flow with local email delivery. This does **not** confirm external email deliverability or a configured public preview.
-- `/atlas` is disabled unless `ADMIN_OWNER_PREVIEW_ENABLED=true` and a valid owner session is verified server-side.
-- The Atlas explorer provides navigation, search, filters, inspection and real UUID identities from a **small non-published development Git snapshot**. It is not yet connected to the released canonical public read API. Definitions and references are intentionally absent where the source has no reviewed evidence.
+Next.js owner workspace. Django is authoritative for owner authentication;
+published knowledge is available anonymously through the versioned public API.
+The `/atlas` interface requires an API-verified owner session and reads only
+published UUID knowledge. It never substitutes a local snapshot when the API
+fails.
 
 ## Local development
 
-Use Node.js 22+ and run `npm ci`, then `npm run dev`. Validate with `npm run lint`, `npm run typecheck`, `npm run test:contracts` and `npm run build`.
+Use Node.js 22+, run `npm ci`, then `npm run dev`. Run `npm run lint`,
+`npm run typecheck`, `npm run test:contracts` and `npm run build` before review.
+Run `tests/run-atlas-e2e.sh` for a disposable staging rehearsal. It starts a
+local PostgreSQL container, applies the data-owned migrations, publishes and
+stamps the canonical Git corpus, then runs Chromium over local HTTPS with an
+SMTP sink. The browser suite covers owner login, live Atlas navigation,
+anonymous knowledge reads, logout and a WCAG A/AA audit. It needs Docker,
+OpenSSL and either system Chromium or a Playwright Chromium install.
 
-To exercise complete authentication, also run a separately configured local Django API, disposable PostgreSQL with the documented admin operational tables, and the local asynchronous email worker. The CI definition in `.github/workflows/owner-fullstack-ci.yml` is the reproducible integration reference. Never use production credentials or a live database as a local fixture.
+## Atlas contracts
 
-The feature flags and non-public staging email destination are required; do not activate authentication or deploy to production by committing configuration defaults.
+Set `ADMIN_OWNER_PREVIEW_ENABLED=true` to expose the owner shell. Set
+`CURRICULA_API_ORIGIN` to the exact Django origin for server-side owner session
+verification. Set `ATLAS_PUBLIC_API_ORIGIN` to the public Django origin and
+`ATLAS_PUBLIC_RELEASE_COMMIT` to the stamped canonical Git commit. The Atlas
+reads `/v2/concepts/`, `/v2/concepts/<uuid>/`, and
+`/v2/concepts/<uuid>/statements/` without forwarding owner credentials. The
+public API checks its own release marker and returns 503 if the release is not
+verified. Admin displays an explicit error in that case.
 
-## Data and authorization boundary
+The Computer Science view uses alphabetic navigation areas. These are an
+index, not asserted scholarly classification. The canonical corpus currently
+contains 554 UUID concepts and 663 statements, but no canonical definitions,
+citations, or ACM CCS/CS2023/CSTA memberships. The inspector marks statements
+unreviewed and their evidence missing. The contextual graph shows only actual
+concept-to-concept statements. Search, filters, breadcrumbs and URL/history
+navigation use canonical UUIDs.
 
-- **Public:** published concepts, definitions, statements, relations, taxonomies and search; unauthenticated bounded GETs; maintain existing `/v1/` compatibility.
-- **Private:** owner email challenge/session lifecycle, protected administrative commands, unpublished data; Django checks permission server-side.
-- The current `atlas-fixture.ts` (legacy filename) is a deterministic small selection of genuine concepts/statements from `curricula-live/data/knowledge/*.jsonl` on `dev`, not a runtime public publication. IDs are not invented; area labels are navigation groupings, not asserted canonical taxonomy relationships.
-- The next vertical slice must read **published** UUID-backed data from public API endpoints after data publication is verified, with accurate `reviewed`/`unreviewed`/`missing-evidence` status. Do not infer review from UUID presence.
-- No privileged API credentials or database secrets are exposed to browser JavaScript.
+## Owner login and release
 
-## Release boundaries
+Set `ADMIN_OWNER_LOGIN_ENABLED=true`, `ADMIN_PUBLIC_ORIGIN` to the exact HTTPS
+admin origin, and share `OWNER_BFF_SHARED_SECRET` only between the Admin server
+and Django. Browser POSTs require exact Origin and same-origin fetch metadata;
+Django verifies each owner session and handles expiry and revocation. The
+host-only session cookie is Secure, HttpOnly and SameSite=Lax. Sign-in links
+require explicit POST confirmation, so opening or previewing a link does not
+redeem it.
 
-Admin and API `main` promotion, Vercel deployment, public-domain configuration, external SMTP credentials, production flags and database migrations require separate approval. An isolated CI success is not proof of actual owner-email delivery or a live preview.
-
-See [architecture dependencies](docs/architecture/dependencies.md), [automation safety](docs/automation-policy.md) and [HTTPS/SMTP integration](docs/owner-https-loopback-test.md) (the last is introduced by PR #12).
-
-## Live read-only Atlas staging data
-
-The read-only Atlas can opt into `ATLAS_PUBLIC_DATA_PREVIEW_ENABLED=true` when `CURRICULA_API_ORIGIN` points to the Django API with `V2_READ_PREVIEW_ENABLED=true`. The app performs an unauthenticated server-side GET to `/v2-preview/atlas/`; it does not forward owner cookies or BFF secrets. The endpoint is strictly bounded and staging-only, and requires the pre-existing v2 knowledge tables. When disabled or unavailable, the view displays an explicitly labeled small canonical **development Git snapshot** rather than inventing publication status.
-
-The preview API contract is `atlas-preview@1` with `release_verified=false` and `review_verified=false`. This is not a substitute for the future public **published** versioned API. The permanent public API must stay open for anonymous knowledge GETs; admin login only gates the admin shell, not the knowledge itself.
+Production requires separately configured external SMTP and a persistent
+Django owner-mail dispatcher. Local SMTP sink tests prove protocol and browser
+integration only; they do not prove external deliverability. See the API
+[release gate](https://github.com/curricula-live/api/blob/dev/docs/public-v2-release.md) for coordinated staging and
+production steps. No production database migration, mail configuration, domain
+change or deployment is performed by this repository.
