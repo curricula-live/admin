@@ -361,6 +361,8 @@ try {
     ADMIN_OWNER_PREVIEW_ENABLED: "true",
     ADMIN_PUBLIC_ORIGIN: ADMIN,
     CURRICULA_API_ORIGIN: API,
+    ATLAS_PUBLIC_API_ORIGIN: API,
+    ATLAS_PUBLIC_RELEASE_COMMIT: process.env.PUBLIC_V2_RELEASE_COMMIT,
     NEXT_TELEMETRY_DISABLED: "1",
   });
   if (db("select count(*) from admin.owner_principal where email='owner-e2e@example.invalid'") !== "1") {
