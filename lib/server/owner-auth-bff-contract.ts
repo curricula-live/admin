@@ -11,7 +11,7 @@ export type IssuedSession = Readonly<{
   expiresAt: Date;
 }>;
 
-export function configuredAdminOrigin(raw: string | undefined, production: boolean, stage?: string): string | null {
+export function configuredAdminOrigin(raw: string | undefined, production: boolean, stage?: string, stagingPreview = false): string | null {
   if (!raw) return null;
   try {
     const url = new URL(raw);
@@ -25,7 +25,9 @@ export function configuredAdminOrigin(raw: string | undefined, production: boole
     // host or port; NODE_ENV=production and APP_ENV!=staging both deny it.
     const localTlsStaging = !production && stage === "staging" &&
       url.origin === "https://localhost:3443";
-    return deployed || local || localTlsStaging ? url.origin : null;
+    const pinnedStaging = stagingPreview && stage === "staging" &&
+      url.origin === "https://curricula-live-admin-git-dev-dbxdrgsls-projects.vercel.app";
+    return deployed || local || localTlsStaging || pinnedStaging ? url.origin : null;
   } catch {
     return null;
   }
@@ -37,9 +39,10 @@ export function validBrowserPost(
   fetchSite: string | null,
   configured: string | undefined,
   production: boolean,
-  stage?: string
+  stage?: string,
+  stagingPreview = false
 ): boolean {
-  const expected = configuredAdminOrigin(configured, production, stage);
+  const expected = configuredAdminOrigin(configured, production, stage, stagingPreview);
   return !!expected && origin === expected && (
     fetchSite === null || fetchSite === "same-origin"
   );
@@ -55,9 +58,10 @@ export type OwnerAuthOperation = "request" | "redeem" | "logout";
 export function authBackendEndpoint(
   origin: string | undefined,
   production: boolean,
-  operation: OwnerAuthOperation
+  operation: OwnerAuthOperation,
+  stagingPreview = false
 ): string | null {
-  const verification = sessionVerificationUrl(origin, production);
+  const verification = sessionVerificationUrl(origin, production, stagingPreview);
   if (!verification) return null;
   return new URL(`/v1/admin/auth/${operation}/`, verification).toString();
 }
