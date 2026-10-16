@@ -73,3 +73,14 @@ test("revoked, unauthorized, failing and malformed API sessions all deny access"
   for (const requester of cases)
     assert.equal(await verifyOwnerSession(TOKEN, "https://api.curricula.live", true, requester, NOW), null);
 });
+
+
+test("exact Vercel staging API is permitted only by an explicit preview contract", () => {
+  const staging = "https://curricula-live-api-git-dev-dbxdrgsls-projects.vercel.app";
+  assert.equal(sessionVerificationUrl(staging, true), null);
+  assert.equal(sessionVerificationUrl(staging, true, true), staging + "/v1/admin/auth/session/");
+  for (const candidate of [
+    staging + ".evil.example", staging + "/elsewhere", "http://" + staging.slice(8),
+    "https://user:pass@" + staging.slice(8), "https://evil.vercel.app",
+  ]) assert.equal(sessionVerificationUrl(candidate, true, true), null);
+});
