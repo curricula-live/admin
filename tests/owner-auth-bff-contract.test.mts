@@ -126,3 +126,18 @@ test("HTTPS localhost fixture is strictly isolated to staging and is never produ
     "https://admin.curricula.live.evil.example"
   ]) assert.equal(configuredAdminOrigin(bad, false, "staging"), null);
 });
+
+
+test("staging preview origins are exact, opt-in, and never authorized by production defaults", () => {
+  const admin = "https://curricula-live-admin-git-dev-dbxdrgsls-projects.vercel.app";
+  const api = "https://curricula-live-api-git-dev-dbxdrgsls-projects.vercel.app";
+  assert.equal(configuredAdminOrigin(admin, true, "staging"), null);
+  assert.equal(configuredAdminOrigin(admin, true, "production", true), null);
+  assert.equal(configuredAdminOrigin(admin, true, "staging", true), admin);
+  assert.equal(configuredAdminOrigin(admin + ".evil.example", true, "staging", true), null);
+  assert.equal(validBrowserPost(admin, "same-origin", admin, true, "staging", true), true);
+  assert.equal(validBrowserPost(admin, "cross-site", admin, true, "staging", true), false);
+  assert.equal(authBackendEndpoint(api, true, "request"), null);
+  assert.equal(authBackendEndpoint(api, true, "request", true), api + "/v1/admin/auth/request/");
+  assert.equal(authBackendEndpoint(api + "/another", true, "request", true), null);
+});
