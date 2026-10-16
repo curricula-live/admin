@@ -59,7 +59,8 @@ export async function POST(request: Request) {
 
   const attested = await verifyOwnerSession(
     session.token, process.env.CURRICULA_API_ORIGIN,
-    process.env.NODE_ENV === "production", fetch
+    process.env.NODE_ENV === "production", fetch,
+    new Date(), process.env.APP_ENV === "staging" && process.env.VERCEL_ENV === "preview"
   );
   const attestedExpiry = verifiedOwnerCookieExpiry(session, attested);
   if (!attestedExpiry) {
