@@ -1,6 +1,7 @@
 /** Fail-closed owner BFF contract. No authentication or public route is enabled. */
 export const OWNER_COOKIE_NAME = "__Host-curricula_admin_session";
 export const OWNER_SESSION_CONTRACT = "owner-session@1";
+const STAGING_API_ORIGIN = "https://curricula-live-api-git-dev-dbxdrgsls-projects.vercel.app";
 
 export type OwnerIdentity = Readonly<{
   subjectId: string;
@@ -15,7 +16,7 @@ const ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]
 const TOKEN = /^[A-Za-z0-9_-]{32,256}$/;
 
 /** Never allow arbitrary server-side origins or credential-bearing URLs. */
-export function sessionVerificationUrl(raw: string | undefined, production: boolean): string | null {
+export function sessionVerificationUrl(raw: string | undefined, production: boolean, stagingPreview = false): string | null {
   if (!raw) return null;
   try {
     const url = new URL(raw);
@@ -24,7 +25,8 @@ export function sessionVerificationUrl(raw: string | undefined, production: bool
     const local = url.protocol === "http:" &&
       ["localhost", "127.0.0.1"].includes(url.hostname) &&
       (url.port === "8000" || url.port === "8080");
-    if (!(trustedRemote || (!production && local))) return null;
+    const stagingRemote = stagingPreview && url.origin === STAGING_API_ORIGIN;
+    if (!(trustedRemote || stagingRemote || (!production && local))) return null;
     return new URL("/v1/admin/auth/session/", url.origin).toString();
   } catch {
     return null;
@@ -55,9 +57,10 @@ export async function verifyOwnerSession(
   apiOrigin: string | undefined,
   production: boolean,
   requester: ServerFetch,
-  now: Date = new Date()
+  now: Date = new Date(),
+  stagingPreview = false
 ): Promise<OwnerIdentity | null> {
-  const url = sessionVerificationUrl(apiOrigin, production);
+  const url = sessionVerificationUrl(apiOrigin, production, stagingPreview);
   if (!url || !token || !TOKEN.test(token)) return null;
 
   try {
