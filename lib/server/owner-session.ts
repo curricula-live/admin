@@ -10,6 +10,8 @@ export async function currentOwnerIdentity() {
     token,
     process.env.CURRICULA_API_ORIGIN,
     process.env.NODE_ENV === "production",
-    fetch
+    fetch,
+    new Date(),
+    process.env.APP_ENV === "staging" && process.env.VERCEL_ENV === "preview"
   );
 }
