@@ -28,7 +28,9 @@ function apiOrigin(): URL {
   const local = process.env.NODE_ENV !== "production" && url.protocol === "http:" &&
     ["localhost", "127.0.0.1"].includes(url.hostname) && ["8000", "8080"].includes(url.port);
   const remote = url.origin === "https://api.curricula.live";
-  if ((!local && !remote) || url.pathname !== "/" || url.search || url.hash || url.username || url.password)
+  const staging = process.env.VERCEL_ENV === "preview" &&
+    url.origin === "https://curricula-live-api-git-dev-dbxdrgsls-projects.vercel.app";
+  if ((!local && !remote && !staging) || url.pathname !== "/" || url.search || url.hash || url.username || url.password)
     throw new Error("Public API origin is not allowlisted.");
   return url;
 }
