@@ -12,6 +12,7 @@ export async function currentOwnerIdentity() {
     process.env.NODE_ENV === "production",
     fetch,
     new Date(),
-    process.env.APP_ENV === "staging" && process.env.VERCEL_ENV === "preview"
+    process.env.APP_ENV === "staging" && process.env.VERCEL_ENV === "preview",
+    process.env.API_VERCEL_BYPASS_SECRET
   );
 }
