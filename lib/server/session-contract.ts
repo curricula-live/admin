@@ -58,7 +58,8 @@ export async function verifyOwnerSession(
   production: boolean,
   requester: ServerFetch,
   now: Date = new Date(),
-  stagingPreview = false
+  stagingPreview = false,
+  bypassSecret?: string
 ): Promise<OwnerIdentity | null> {
   const url = sessionVerificationUrl(apiOrigin, production, stagingPreview);
   if (!url || !token || !TOKEN.test(token)) return null;
@@ -66,7 +67,8 @@ export async function verifyOwnerSession(
   try {
     const response = await requester(url, {
       method: "GET",
-      headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+      headers: { Authorization: `Bearer ${token}`, Accept: "application/json",
+        ...(stagingPreview && bypassSecret ? { "x-vercel-protection-bypass": bypassSecret } : {}) },
       cache: "no-store",
       redirect: "error"
     });
