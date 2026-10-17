@@ -29,7 +29,10 @@ export async function GET() {
       owner_read:obj.owner_read === true,
       rate_bucket_write:obj.rate_bucket_write === true,
       failure_category:typeof obj.failure_category==="string" && /^[A-Za-z]{1,40}$/.test(obj.failure_category)?obj.failure_category:null,
-      failure_kind:typeof obj.failure_kind==="string" && /^[a-z_]{1,40}$/.test(obj.failure_kind)?obj.failure_kind:null
+      failure_kind:typeof obj.failure_kind==="string" && /^[a-z_]{1,40}$/.test(obj.failure_kind)?obj.failure_kind:null,
+      driver_category:typeof obj.driver_category==="string" && /^[A-Za-z]{1,40}$/.test(obj.driver_category)?obj.driver_category:null,
+      sqlstate:typeof obj.sqlstate==="string" && /^[A-Za-z0-9]{5}$/.test(obj.sqlstate)?obj.sqlstate:null,
+      config:typeof obj.config==="object" && obj.config!==null ? Object.fromEntries(["role_matches","pooler_host","port_5432","password_present"].map(k=>[k,(obj.config as Record<string,unknown>)[k]===true])) : null
     },{status:200,headers:{"Cache-Control":"private, no-store"}});
   } catch {
     return NextResponse.json({status:"upstream_unreachable"},{status:503,headers:{"Cache-Control":"private, no-store"}});
