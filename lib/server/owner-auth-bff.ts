@@ -9,6 +9,13 @@ import {
 } from "./owner-auth-bff-contract";
 
 const MAX_REQUEST_BYTES = 2048;
+
+function previewBypassHeaders(): Record<string, string> {
+  const token = process.env.API_VERCEL_BYPASS_SECRET;
+  return process.env.VERCEL_ENV === "preview" && process.env.APP_ENV === "staging" &&
+    typeof token === "string" && token.length >= 24
+    ? { "x-vercel-protection-bypass": token } : {};
+}
 const isStagingPreview = () => process.env.APP_ENV === "staging" && process.env.VERCEL_ENV === "preview";
 
 export function ownerLoginEnabled(): boolean {
@@ -81,6 +88,7 @@ export async function callOwnerBackend(
       method: "POST",
       headers: {
         "X-Admin-BFF-Secret": secret,
+        ...previewBypassHeaders(),
         Accept: "application/json",
         ...(body ? { "Content-Type": "application/json" } : {}),
         ...(bearerToken ? { Authorization: `Bearer ${bearerToken}` } : {}),
