@@ -7,11 +7,13 @@ type State = "idle" | "sending" | "sent" | "error";
 export default function OwnerLoginForm() {
   const [email, setEmail] = useState("");
   const [state, setState] = useState<State>("idle");
+  const [failureCode, setFailureCode] = useState<number | null>(null);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (state === "sending") return;
     setState("sending");
+    setFailureCode(null);
     try {
       const response = await fetch("/api/auth/request", {
         method: "POST",
@@ -20,6 +22,7 @@ export default function OwnerLoginForm() {
         cache: "no-store",
         body: JSON.stringify({ email }),
       });
+      setFailureCode(response.status === 202 ? null : response.status);
       setState(response.status === 202 ? "sent" : "error");
     } catch {
       setState("error");
@@ -52,7 +55,7 @@ export default function OwnerLoginForm() {
           {state === "sent"
             ? "If this address is eligible, a sign-in link will arrive shortly."
             : state === "error"
-              ? "Sign-in requests are temporarily unavailable."
+              ? `Sign-in requests are temporarily unavailable.${failureCode ? ` (HTTP ${failureCode})` : ""}`
               : "Only authorized owner access is supported."}
         </p>
       </section>
