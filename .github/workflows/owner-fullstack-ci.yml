@@ -1,0 +1,125 @@
+name: Full-stack owner authentication (disposable CI)
+
+on:
+  pull_request:
+    branches: [dev, main]
+  push:
+    branches: [dev]
+
+permissions:
+  contents: read
+
+jobs:
+  fullstack-owner-auth:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - transport: http
+            mail: file
+          - transport: https
+            mail: file
+          - transport: https
+            mail: smtp
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: atlas_e2e
+          POSTGRES_PASSWORD: fake-isolated-test-password
+          POSTGRES_DB: atlas_auth_e2e
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U atlas_e2e -d atlas_auth_e2e"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://atlas_e2e:fake-isolated-test-password@localhost:5432/atlas_auth_e2e
+      DJANGO_SECRET_KEY: isolated-local-only-authorization-fixture-never-production
+      APP_ENV: staging
+      API_REPO_DIR: api-integration
+      DATA_REPO_DIR: data-integration
+      PUBLIC_V2_ENABLED: "true"
+      PUBLIC_V2_RELEASE_COMMIT: c83cf9229eeae4be2c67b95931020c8ca74b8d16
+    steps:
+      - name: Checkout admin under test
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Checkout fixed Django API integration
+        uses: actions/checkout@v4
+        with:
+          repository: curricula-live/api
+          ref: 2b9c58ed9b4635b659deb1fb03b2de8ae98e6296
+          path: api-integration
+          persist-credentials: false
+      - name: Checkout fixed canonical data schema
+        uses: actions/checkout@v4
+        with:
+          repository: curricula-live/data
+          ref: c83cf9229eeae4be2c67b95931020c8ca74b8d16
+          path: data-integration
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - name: Install pinned API dependencies
+        working-directory: api-integration
+        run: uv sync --frozen --dev
+      - name: Install pinned canonical data dependencies
+        working-directory: data-integration
+        run: python -m pip install -r requirements.txt
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Install pinned admin dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Install isolated Chromium test dependency
+        run: |
+          npm install --no-save --package-lock=false --ignore-scripts playwright@1.56.1
+          npx playwright install --with-deps chromium
+      - name: Generate disposable localhost TLS identity
+        if: matrix.transport == 'https'
+        run: |
+          openssl req -x509 -newkey rsa:2048 -nodes -sha256 -days 1 \
+            -keyout "$RUNNER_TEMP/owner-e2e-localhost-key.pem" \
+            -out "$RUNNER_TEMP/owner-e2e-localhost-cert.pem" \
+            -subj "/CN=localhost" \
+            -addext "subjectAltName=DNS:localhost,IP:127.0.0.1" >/dev/null 2>&1
+          {
+            printf 'OWNER_E2E_TLS_CERT=%s\n' "$RUNNER_TEMP/owner-e2e-localhost-cert.pem"
+            printf 'OWNER_E2E_TLS_KEY=%s\n' "$RUNNER_TEMP/owner-e2e-localhost-key.pem"
+            printf 'NODE_EXTRA_CA_CERTS=%s\n' "$RUNNER_TEMP/owner-e2e-localhost-cert.pem"
+          } >> "$GITHUB_ENV"
+      - name: Install canonical and operational SQL in disposable PostgreSQL
+        run: |
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f data-integration/database/migrations/0001_knowledge_core.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f data-integration/database/migrations/0002_admin_owner.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f data-integration/database/migrations/0003_owner_mail_outbox.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f data-integration/database/migrations/0004_knowledge_release.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "insert into admin.owner_principal (id,email,role,active) values ('c74fe051-ac5e-521b-8770-3180fb0decb6', 'owner-e2e@example.invalid','owner',true)"
+      - name: Publish and verify canonical knowledge in disposable PostgreSQL
+        working-directory: data-integration
+        run: |
+          python scripts/publish.py --database-url "$DATABASE_URL" apply --confirm-publish PUBLISH
+          python scripts/publish.py --database-url "$DATABASE_URL" verify
+          python -m scripts.stamp_publication --database-url "$DATABASE_URL" --confirm STAMP-VERIFIED-PUBLICATION
+      - name: Verify Django's configured system checks
+        working-directory: api-integration
+        run: uv run python manage.py check
+      - name: Run real browser login over isolated transport
+        env:
+          OWNER_E2E_TRANSPORT: ${{ matrix.transport }}
+          OWNER_E2E_MAIL_TRANSPORT: ${{ matrix.mail }}
+          OWNER_E2E_ATLAS_RELEASE: "true"
+        run: node tests/owner-auth-real-stack.e2e.mjs
