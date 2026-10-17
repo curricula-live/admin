@@ -28,7 +28,8 @@ export async function GET() {
       knowledge_read:obj.knowledge_read === true,
       owner_read:obj.owner_read === true,
       rate_bucket_write:obj.rate_bucket_write === true,
-      failure_category:typeof obj.failure_category==="string" && /^[A-Za-z]{1,40}$/.test(obj.failure_category)?obj.failure_category:null
+      failure_category:typeof obj.failure_category==="string" && /^[A-Za-z]{1,40}$/.test(obj.failure_category)?obj.failure_category:null,
+      failure_kind:typeof obj.failure_kind==="string" && /^[a-z_]{1,40}$/.test(obj.failure_kind)?obj.failure_kind:null
     },{status:200,headers:{"Cache-Control":"private, no-store"}});
   } catch {
     return NextResponse.json({status:"upstream_unreachable"},{status:503,headers:{"Cache-Control":"private, no-store"}});
