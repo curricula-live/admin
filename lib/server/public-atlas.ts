@@ -37,7 +37,10 @@ function apiOrigin(): URL {
 
 async function get(path: string): Promise<Record<string, unknown>> {
   const response = await fetch(new URL(path, apiOrigin()), {method:"GET", cache:"no-store", redirect:"error",
-    headers:{Accept:"application/json"}, signal:AbortSignal.timeout(8000)});
+    headers:{Accept:"application/json", ...(process.env.VERCEL_ENV === "preview" &&
+      process.env.APP_ENV === "staging" && process.env.API_VERCEL_BYPASS_SECRET
+      ? {"x-vercel-protection-bypass":process.env.API_VERCEL_BYPASS_SECRET} : {})},
+    signal:AbortSignal.timeout(8000)});
   if (!response.ok) throw new Error(`Public API returned HTTP ${response.status}.`);
   const payload: unknown = await response.json();
   const expected = process.env.ATLAS_PUBLIC_RELEASE_COMMIT;
